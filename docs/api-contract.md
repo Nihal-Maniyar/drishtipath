@@ -128,8 +128,38 @@ The backend exposes these v1 endpoints (available at root and `/api/v1` prefix):
 | `GET` | `/tickets/{ticket_id}` | None | `200 OK` | Retrieve ticket by ID (`404` if not found) |
 | `PATCH` | `/tickets/{ticket_id}/status` | Query `new_status` | `200 OK` | Transition ticket lifecycle status (`400` if invalid) |
 | `GET` | `/tickets/{ticket_id}/map` | None | `200 OK` | Get Google Maps navigation link and coordinates |
+| `GET` | `/advisories` | None | `200 OK` | List active downstream hazard advisories |
+| `GET` | `/advisories/{advisory_id}` | None | `200 OK` | Retrieve single advisory (`404` if not found) |
+| `GET` | `/advisories/bus/{bus_id}` | None | `200 OK` | Retrieve active hazard advisories applicable to specific bus |
+| `POST` | `/advisories/evaluate` | `AdvisoryEvaluationRequest` | `201 Created` | Evaluate incident and issue downstream hazard advisory |
+
+## Hazard Advisory — downstream bus warning
+
+When a severe defect (e.g. high-severity pothole) qualifies, an advisory is published via MQTT (`beyonders/advisories/v1` and `beyonders/advisories/v1/{route_id}`) to warn downstream fleet vehicles approaching within a 500-meter corridor window. Format: `ADV-YYYY-XXXXXX`.
+
+```json
+{
+  "advisory_id": "ADV-2026-000001",
+  "incident_id": "INC-000001",
+  "source_bus_id": "BUS-001",
+  "route_id": "ROUTE-PUNE-FC",
+  "latitude": 18.5196,
+  "longitude": 73.8436,
+  "road_aligned_latitude": 18.5196,
+  "road_aligned_longitude": 73.8436,
+  "severity": "HIGH",
+  "event_type": "POTHOLE",
+  "issued_at": "2026-09-22T08:35:00Z",
+  "expires_at": "2026-09-22T09:35:00Z",
+  "corridor_window_meters": 500.0,
+  "target_buses": ["BUS-002"],
+  "description": "Hazard Advisory: Severe pothole on corridor ROUTE-PUNE-FC."
+}
+```
 
 ### Idempotency & Conflict Rules
 - Re-submitting an existing `event_id`, `incident_id`, or `ticket_id` with an identical payload returns `201 Created` with `"duplicate": true`.
 - Submitting an existing ID with a modified or conflicting payload returns `409 Conflict`.
 - Malformed payloads or invalid contract values return `422 Unprocessable Entity`.
+- Subscribers process MQTT QoS 1 duplicate deliveries idempotently using stable `advisory_id` keys.
+

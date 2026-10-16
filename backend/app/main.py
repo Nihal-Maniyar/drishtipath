@@ -31,6 +31,8 @@ try:
         verify_bus_auth,
     )
     from backend.app.routers.auth import router as auth_router
+    from backend.app.routers.advisory import router as advisory_router
+    from backend.app.services.advisory_service import advisory_service
 except ImportError:
     from app.core.security import (
         UserAccount,
@@ -39,6 +41,8 @@ except ImportError:
         verify_bus_auth,
     )
     from app.routers.auth import router as auth_router
+    from app.routers.advisory import router as advisory_router
+    from app.services.advisory_service import advisory_service
 
 # Handle imports whether launched from root or backend directory
 try:
@@ -127,6 +131,8 @@ async def lifespan(app: FastAPI):
         try:
             mqtt_consumer = MQTTEventConsumer(on_event_received=on_mqtt_message)
             mqtt_consumer.start()
+            if mqtt_consumer.client:
+                advisory_service.set_mqtt_client(mqtt_consumer.client)
         except Exception as e:
             logger.debug("MQTT consumer startup bypassed: %s", e)
 
@@ -595,6 +601,7 @@ init_default_buses()
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
+api_router.include_router(advisory_router)
 
 
 # ---------------------------------------------------------------------------
@@ -920,6 +927,17 @@ async def trigger_simulator_scenario(
         }
         tickets_by_id[tkt["ticket_id"]] = tkt
         await ws_manager.broadcast({"type": "TICKET_CREATED", "data": tkt})
+
+        # 5. Downstream hazard advisory for corridor
+        adv = advisory_service.evaluate_and_publish(
+            incident=inc,
+            fleet=buses_by_id,
+            source_bus_id="BUS-001",
+            route_id="ROUTE-PUNE-FC",
+        )
+        if adv:
+            await ws_manager.broadcast({"type": "ADVISORY_ISSUED", "data": adv.model_dump()})
+
         await ws_manager.broadcast({"type": "STATS_UPDATED", "data": get_platform_stats()})
 
         return {"message": "Dual-bus scenario executed successfully", "incident_id": "INC-000001", "ticket_id": "POT-2026-000001"}
@@ -1129,6 +1147,23 @@ async def ingest_event(event: Event):
             "longitude": event.longitude,
             "last_event": event.event_id,
         }
+
+    # Evaluate and publish downstream hazard advisory if qualified
+    if fused_incident:
+        try:
+            adv = advisory_service.evaluate_and_publish(
+                incident=fused_incident,
+                fleet=buses_by_id,
+                source_bus_id=event.bus_id,
+                route_id=getattr(event, "route_id", None) or fused_incident.get("route_id"),
+            )
+            if adv:
+                await ws_manager.broadcast({
+                    "type": "ADVISORY_ISSUED",
+                    "data": adv.model_dump(),
+                })
+        except Exception as e:
+            logger.debug("Advisory evaluation skipped/error: %s", e)
 
     # Broadcast event and stats to all active WebSocket clients in realtime
     await ws_manager.broadcast({

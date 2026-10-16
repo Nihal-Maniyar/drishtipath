@@ -164,6 +164,7 @@ class BusInstance:
         self.latest_detections: List[Detection] = []
         self.latest_tracks: List[STrack] = []
         self.recent_events: List[Event] = []
+        self.received_advisories: List[Dict[str, Any]] = []
         self.latest_imu: Optional[IMUReading] = None
         self.current_lat: float = 0.0
         self.current_lon: float = 0.0
@@ -171,9 +172,27 @@ class BusInstance:
         self.road_lon: float = 0.0
         self.heading: float = 0.0
 
+        if self.mqtt:
+            self.mqtt.subscribe_advisories(
+                callback=self._on_hazard_advisory_received,
+                route_id=self.route_id,
+            )
+
         self._lock = threading.Lock()
         self._running = False
         self._worker_thread: Optional[threading.Thread] = None
+
+    def _on_hazard_advisory_received(self, advisory: Dict[str, Any]) -> None:
+        """Handle incoming hazard advisory for downstream route corridor."""
+        self.received_advisories.append(advisory)
+        logger.info(
+            "Bus %s received advisory %s for %s at (%s, %s)",
+            self.bus_id,
+            advisory.get("advisory_id"),
+            advisory.get("event_type"),
+            advisory.get("latitude"),
+            advisory.get("longitude"),
+        )
 
     def _on_defect_passed(self, class_name: str) -> None:
         """Coupled physics callback: trigger an IMU shock when bus rolls over defect."""

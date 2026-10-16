@@ -12,6 +12,7 @@ Validates:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import pytest
 from fastapi.testclient import TestClient
 
@@ -301,3 +302,279 @@ def test_bus_api_key_verification() -> None:
     # Invalid key
     assert asyncio.run(verify_bus_auth(x_bus_api_key="invalid_bus_key")) is False
     assert asyncio.run(verify_bus_auth(x_bus_api_key=None)) is False
+
+
+# ---------------------------------------------------------------------------
+# Phase B: Downstream Bus Hazard Advisories Tests
+# ---------------------------------------------------------------------------
+
+def test_hazard_advisory_contract_validation() -> None:
+    """Verify HazardAdvisory schema validation and regex identifier enforcement."""
+    from backend.app.schemas.advisory import HazardAdvisory
+    import pydantic
+
+    now = datetime.now(timezone.utc)
+    now_str = now.isoformat().replace("+00:00", "Z")
+    exp_str = (now + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+
+    valid_payload = {
+        "advisory_id": "ADV-2026-000001",
+        "incident_id": "INC-000001",
+        "source_bus_id": "BUS-001",
+        "route_id": "ROUTE-PUNE-FC",
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "road_aligned_latitude": 18.5196,
+        "road_aligned_longitude": 73.8436,
+        "severity": "HIGH",
+        "event_type": "POTHOLE",
+        "issued_at": now_str,
+        "expires_at": exp_str,
+        "corridor_window_meters": 500.0,
+        "target_buses": ["BUS-002"],
+        "description": "Severe pothole hazard ahead",
+    }
+
+    adv = HazardAdvisory.model_validate(valid_payload)
+    assert adv.advisory_id == "ADV-2026-000001"
+    assert adv.is_expired() is False
+
+    # Invalid advisory ID format
+    invalid_id = dict(valid_payload, advisory_id="INVALID-001")
+    with pytest.raises(pydantic.ValidationError):
+        HazardAdvisory.model_validate(invalid_id)
+
+    # Invalid incident ID format
+    invalid_inc = dict(valid_payload, incident_id="INCIDENT-1")
+    with pytest.raises(pydantic.ValidationError):
+        HazardAdvisory.model_validate(invalid_inc)
+
+    # Expired advisory
+    past_str = (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    expired_adv = HazardAdvisory.model_validate(dict(valid_payload, expires_at=past_str))
+    assert expired_adv.is_expired() is True
+
+
+def test_bearing_and_heading_approach_calculation() -> None:
+    """Verify forward bearing and heading angle divergence calculations."""
+    from backend.app.services.advisory_service import (
+        compute_bearing,
+        haversine_distance_meters,
+        is_bus_approaching,
+    )
+
+    # Point A to Point B directly East (same latitude, increasing longitude)
+    lat1, lon1 = 18.5000, 73.8000
+    lat2, lon2 = 18.5000, 73.8100  # East of point 1
+    dist = haversine_distance_meters(lat1, lon1, lat2, lon2)
+    assert dist > 1000.0  # Approx 1.05 km
+
+    bearing = compute_bearing(lat1, lon1, lat2, lon2)
+    assert 85.0 <= bearing <= 95.0  # Close to 90 degrees (East)
+
+    # Bus heading East (90 deg) approaching hazard to the East -> True
+    assert is_bus_approaching(lat1, lon1, bus_heading=90.0, hazard_lat=lat2, hazard_lon=lon2) is True
+    # Bus heading North-East (45 deg) -> True (within 90 deg divergence)
+    assert is_bus_approaching(lat1, lon1, bus_heading=45.0, hazard_lat=lat2, hazard_lon=lon2) is True
+    # Bus heading West (270 deg) moving away from hazard -> False
+    assert is_bus_approaching(lat1, lon1, bus_heading=270.0, hazard_lat=lat2, hazard_lon=lon2) is False
+    # Bus heading undefined (None) -> Fallback True
+    assert is_bus_approaching(lat1, lon1, bus_heading=None, hazard_lat=lat2, hazard_lon=lon2) is True
+
+
+def test_corridor_qualification_downstream_window() -> None:
+    """Verify that only downstream buses within 500m on the same route qualify."""
+    from backend.app.services.advisory_service import advisory_service
+
+    hazard_lat, hazard_lon = 18.5196, 73.8436  # Goodluck Chowk
+    route_id = "ROUTE-PUNE-FC"
+
+    test_fleet = {
+        # 1. Reporting bus -> must be excluded
+        "BUS-001": {
+            "bus_id": "BUS-001",
+            "route_id": route_id,
+            "latitude": 18.5196,
+            "longitude": 73.8436,
+            "heading_degrees": 90.0,
+            "status": "ONLINE",
+        },
+        # 2. Downstream bus approaching, ~250m away on same route -> QUALIFIED
+        "BUS-002": {
+            "bus_id": "BUS-002",
+            "route_id": route_id,
+            "latitude": 18.5175,  # South of hazard
+            "longitude": 73.8436,
+            "heading_degrees": 0.0,  # Heading North towards hazard
+            "status": "ONLINE",
+        },
+        # 3. Far bus, ~1.2 km away on same route (> 500m) -> EXCLUDED
+        "BUS-003": {
+            "bus_id": "BUS-003",
+            "route_id": route_id,
+            "latitude": 18.5320,
+            "longitude": 73.8450,
+            "heading_degrees": 180.0,
+            "status": "ONLINE",
+        },
+        # 4. Bus on DIFFERENT route, 200m away -> EXCLUDED
+        "BUS-004": {
+            "bus_id": "BUS-004",
+            "route_id": "ROUTE-PUNE-KARVE",
+            "latitude": 18.5180,
+            "longitude": 73.8436,
+            "heading_degrees": 0.0,
+            "status": "ONLINE",
+        },
+        # 5. Bus on same route and 200m away, but OFFLINE -> EXCLUDED
+        "BUS-005": {
+            "bus_id": "BUS-005",
+            "route_id": route_id,
+            "latitude": 18.5180,
+            "longitude": 73.8436,
+            "heading_degrees": 0.0,
+            "status": "OFFLINE",
+        },
+        # 6. Bus 200m away on same route, but heading away (180 deg) -> EXCLUDED
+        "BUS-006": {
+            "bus_id": "BUS-006",
+            "route_id": route_id,
+            "latitude": 18.5175,  # South of hazard
+            "longitude": 73.8436,
+            "heading_degrees": 180.0,  # Moving South away from hazard
+            "status": "ONLINE",
+        },
+    }
+
+    qualified = advisory_service.qualify_downstream_buses(
+        hazard_lat=hazard_lat,
+        hazard_lon=hazard_lon,
+        route_id=route_id,
+        fleet=test_fleet,
+        source_bus_id="BUS-001",
+        corridor_window_meters=500.0,
+    )
+
+    assert qualified == ["BUS-002"]
+
+
+def test_advisory_publishing_and_rest_endpoints(client: TestClient) -> None:
+    """Verify advisory creation, mock MQTT dispatch, and REST retrieval endpoints."""
+    from backend.app.services.advisory_service import advisory_service
+
+    # Setup mock MQTT publisher
+    published_messages = []
+
+    class MockMQTTClient:
+        def publish(self, topic: str, payload: str, qos: int = 1):
+            published_messages.append({"topic": topic, "payload": json.loads(payload), "qos": qos})
+
+    advisory_service.set_mqtt_client(MockMQTTClient())
+
+    # Create severe pothole incident in main dictionary
+    from backend.app.main import buses_by_id, incidents_by_id
+
+    test_inc = {
+        "incident_id": "INC-000888",
+        "event_type": "POTHOLE",
+        "severity": "HIGH",
+        "status": "VERIFIED",
+        "confidence": 0.96,
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "route_id": "ROUTE-PUNE-FC",
+        "buses": ["BUS-001"],
+        "description": "Severe pothole at Goodluck Chowk",
+    }
+    incidents_by_id["INC-000888"] = test_inc
+
+    # Evaluate and issue advisory
+    adv = advisory_service.evaluate_and_publish(
+        incident=test_inc,
+        fleet=buses_by_id,
+        source_bus_id="BUS-001",
+        route_id="ROUTE-PUNE-FC",
+        corridor_window_meters=500.0,
+    )
+
+    assert adv is not None
+    assert adv.incident_id == "INC-000888"
+    assert adv.source_bus_id == "BUS-001"
+    assert adv.severity == "HIGH"
+
+    # Verify MQTT delivery on both global and route-specific topics
+    topics = [m["topic"] for m in published_messages]
+    assert "beyonders/advisories/v1" in topics
+    assert "beyonders/advisories/v1/ROUTE-PUNE-FC" in topics
+    assert all(m["qos"] == 1 for m in published_messages)
+
+    # 1. Query GET /api/v1/advisories
+    resp_list = client.get("/api/v1/advisories")
+    assert resp_list.status_code == 200
+    adv_list = resp_list.json()
+    assert any(a["advisory_id"] == adv.advisory_id for a in adv_list)
+
+    # 2. Query GET /api/v1/advisories/{id}
+    resp_single = client.get(f"/api/v1/advisories/{adv.advisory_id}")
+    assert resp_single.status_code == 200
+    assert resp_single.json()["advisory_id"] == adv.advisory_id
+
+    # 3. Query POST /api/v1/advisories/evaluate with dispatcher token
+    dispatcher_token = create_access_token({"sub": "dispatcher", "role": "DISPATCHER"})
+    resp_eval = client.post(
+        "/api/v1/advisories/evaluate",
+        json={"incident_id": "INC-000888", "route_id": "ROUTE-PUNE-FC", "corridor_window_meters": 500.0, "ttl_seconds": 1800},
+        headers={"Authorization": f"Bearer {dispatcher_token}"},
+    )
+    assert resp_eval.status_code == 201
+    assert resp_eval.json()["incident_id"] == "INC-000888"
+
+
+def test_advisory_subscriber_idempotency_and_stale_filtering() -> None:
+    """Verify that subscriber idempotently deduplicates QoS 1 re-deliveries and rejects stale advisories."""
+    from backend.app.services.advisory_service import AdvisorySubscriber
+
+    subscriber = AdvisorySubscriber(bus_id="BUS-002", route_id="ROUTE-PUNE-FC")
+
+    now = datetime.now(timezone.utc)
+    now_str = now.isoformat().replace("+00:00", "Z")
+    future_exp = (now + timedelta(minutes=45)).isoformat().replace("+00:00", "Z")
+
+    valid_payload = {
+        "advisory_id": "ADV-2026-999001",
+        "incident_id": "INC-000001",
+        "source_bus_id": "BUS-001",
+        "route_id": "ROUTE-PUNE-FC",
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "severity": "HIGH",
+        "event_type": "POTHOLE",
+        "issued_at": now_str,
+        "expires_at": future_exp,
+        "corridor_window_meters": 500.0,
+        "target_buses": ["BUS-002"],
+    }
+
+    # 1. First reception -> Accepted
+    res1 = subscriber.process_message_payload(valid_payload)
+    assert res1 is not None
+    assert res1.advisory_id == "ADV-2026-999001"
+    assert len(subscriber.received_advisories) == 1
+
+    # 2. QoS 1 Duplicate re-delivery of the exact same message -> Deduplicated (returns None)
+    res2 = subscriber.process_message_payload(valid_payload)
+    assert res2 is None
+    assert len(subscriber.received_advisories) == 1  # Still 1, no duplicate stored
+
+    # 3. Stale / Expired message -> Dropped (returns None)
+    past_exp = (now - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+    stale_payload = dict(valid_payload, advisory_id="ADV-2026-999002", expires_at=past_exp)
+    res_stale = subscriber.process_message_payload(stale_payload)
+    assert res_stale is None
+    assert "ADV-2026-999002" not in subscriber.seen_advisories
+
+    # 4. Irrelevant route message -> Dropped
+    diff_route = dict(valid_payload, advisory_id="ADV-2026-999003", route_id="ROUTE-PUNE-SHIVAJI")
+    res_route = subscriber.process_message_payload(diff_route)
+    assert res_route is None
+
