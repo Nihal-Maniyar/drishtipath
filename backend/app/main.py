@@ -13,6 +13,7 @@ logger = logging.getLogger("urban_intelligence.backend")
 
 from fastapi import (
     APIRouter,
+    Depends,
     FastAPI,
     HTTPException,
     WebSocket,
@@ -21,6 +22,23 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+
+try:
+    from backend.app.core.security import (
+        UserAccount,
+        get_current_user,
+        require_role,
+        verify_bus_auth,
+    )
+    from backend.app.routers.auth import router as auth_router
+except ImportError:
+    from app.core.security import (
+        UserAccount,
+        get_current_user,
+        require_role,
+        verify_bus_auth,
+    )
+    from app.routers.auth import router as auth_router
 
 # Handle imports whether launched from root or backend directory
 try:
@@ -576,6 +594,7 @@ init_default_buses()
 # ---------------------------------------------------------------------------
 
 api_router = APIRouter()
+api_router.include_router(auth_router)
 
 
 # ---------------------------------------------------------------------------
@@ -768,7 +787,10 @@ def seed_demo_endpoint():
 # ---------------------------------------------------------------------------
 
 @api_router.post("/simulators/trigger", tags=["Platform"])
-async def trigger_simulator_scenario(payload: Optional[Dict[str, Any]] = None):
+async def trigger_simulator_scenario(
+    payload: Optional[Dict[str, Any]] = None,
+    current_user: UserAccount = Depends(require_role(["ADMIN", "DISPATCHER"])),
+):
     """Trigger an interactive demonstration scenario and broadcast live updates."""
     scenario = (payload or {}).get("scenario", "dual_bus")
 
@@ -1244,7 +1266,10 @@ def get_incident(incident_id: str):
 # ---------------------------------------------------------------------------
 
 @api_router.post("/tickets", status_code=status.HTTP_201_CREATED, tags=["Tickets"])
-async def create_ticket(ticket: Ticket):
+async def create_ticket(
+    ticket: Ticket,
+    current_user: UserAccount = Depends(require_role(["DISPATCHER", "ADMIN"])),
+):
     data = ticket.model_dump(mode="json")
     data["created_at"] = iso_utc(ticket.created_at)
     data["updated_at"] = iso_utc(ticket.updated_at)
@@ -1311,7 +1336,11 @@ def get_ticket(ticket_id: str):
 
 
 @api_router.patch("/tickets/{ticket_id}/status", tags=["Tickets"])
-async def update_ticket_status(ticket_id: str, new_status: str):
+async def update_ticket_status(
+    ticket_id: str,
+    new_status: str,
+    current_user: UserAccount = Depends(require_role(["DISPATCHER", "ADMIN"])),
+):
     if new_status not in TICKET_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1348,7 +1377,7 @@ async def update_ticket_status(ticket_id: str, new_status: str):
         db_transition_ticket_status,
         ticket_id=ticket_id,
         new_status=new_status,
-        changed_by="dispatcher",
+        changed_by=current_user.username,
     )
 
     await ws_manager.broadcast({
