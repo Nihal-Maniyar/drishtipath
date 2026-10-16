@@ -128,8 +128,103 @@ The backend exposes these v1 endpoints (available at root and `/api/v1` prefix):
 | `GET` | `/tickets/{ticket_id}` | None | `200 OK` | Retrieve ticket by ID (`404` if not found) |
 | `PATCH` | `/tickets/{ticket_id}/status` | Query `new_status` | `200 OK` | Transition ticket lifecycle status (`400` if invalid) |
 | `GET` | `/tickets/{ticket_id}/map` | None | `200 OK` | Get Google Maps navigation link and coordinates |
+| `GET` | `/tickets/{ticket_id}/workorder.pdf` | None | `200 OK` | Download standardized PMC contractor work-order PDF with QR navigation |
+| `GET` | `/advisories` | None | `200 OK` | List active downstream hazard advisories |
+| `GET` | `/advisories/{advisory_id}` | None | `200 OK` | Retrieve single advisory (`404` if not found) |
+| `GET` | `/advisories/bus/{bus_id}` | None | `200 OK` | Retrieve active hazard advisories applicable to specific bus |
+| `POST` | `/advisories/evaluate` | `AdvisoryEvaluationRequest` | `201 Created` | Evaluate incident and issue downstream hazard advisory |
+| `GET` | `/verification/watches` | None | `200 OK` | List all scheduled and historical repair verification watches |
+| `GET` | `/tickets/{ticket_id}/verification` | None | `200 OK` | Retrieve verification watch state for a specific ticket |
+| `POST` | `/verification/evaluate-expired` | None | `200 OK` | Evaluate and transition lapsed verification watches |
+| `POST` | `/tickets/{ticket_id}/verify-smooth` | `SmoothObservationSimulateRequest` | `200 OK` | Simulate smooth road pass over repaired ticket |
+| `GET` | `/analytics/heatmap` | Query bbox and filters | `200 OK` | Bounded spatial density aggregation for Leaflet GIS heatmap rendering |
+
+## Hazard Advisory — downstream bus warning
+
+When a severe defect (e.g. high-severity pothole) qualifies, an advisory is published via MQTT (`beyonders/advisories/v1` and `beyonders/advisories/v1/{route_id}`) to warn downstream fleet vehicles approaching within a 500-meter corridor window. Format: `ADV-YYYY-XXXXXX`.
+
+```json
+{
+  "advisory_id": "ADV-2026-000001",
+  "incident_id": "INC-000001",
+  "source_bus_id": "BUS-001",
+  "route_id": "ROUTE-PUNE-FC",
+  "latitude": 18.5196,
+  "longitude": 73.8436,
+  "road_aligned_latitude": 18.5196,
+  "road_aligned_longitude": 73.8436,
+  "severity": "HIGH",
+  "event_type": "POTHOLE",
+  "issued_at": "2026-09-22T08:35:00Z",
+  "expires_at": "2026-09-22T09:35:00Z",
+  "corridor_window_meters": 500.0,
+  "target_buses": ["BUS-002"],
+  "description": "Hazard Advisory: Severe pothole on corridor ROUTE-PUNE-FC."
+}
+```
+
+## Repair Verification Watch — closed-loop ticket verification
+
+When a civic ticket transitions to `RESOLVED`, an automated verification watch is scheduled (window: 48 hours, spatial threshold: 25 meters). Subsequent independent bus observations evaluate repair efficacy:
+- **`VERIFIED_RESOLVED`**: Corroborated smooth surface observations (2 independent bus passes or 1 high-confidence pass >= 0.95).
+- **`FAILED_REPAIR`**: Persistent defect signatures reopen the ticket back to `REPORTED` with complete audit tracking.
+- **`EXPIRED_UNVERIFIED`**: Window lapses without bus passage, flagging the ticket for authority manual inspection.
+Format: `VW-YYYY-XXXXXX`.
+
+```json
+{
+  "watch_id": "VW-2026-000001",
+  "ticket_id": "POT-2026-000001",
+  "scheduled_at": "2026-09-22T08:35:00Z",
+  "expires_at": "2026-09-24T08:35:00Z",
+  "state": "WATCHING",
+  "latitude": 18.5196,
+  "longitude": 73.8436,
+  "required_smooth_observations": 2,
+  "smooth_observations_count": 1,
+  "defect_observations_count": 0,
+  "smooth_buses": ["BUS-002"],
+  "defect_buses": []
+}
+```
+
+## Spatial Density Heatmap — GIS aggregation
+
+The spatial density aggregation endpoint `GET /api/v1/analytics/heatmap` aggregates defects within a bounded viewport into metric spatial grid cells. It supports aggregating both fused `incidents` (default) and raw `observations` via the `target` parameter (`target=incidents` or `target=observations`). This prevents returning excessive raw point coordinates to the GIS dashboard, while providing normalized intensity weights (from `0.0` through `1.0`) for Leaflet heatmap canvas rendering.
+
+```json
+{
+  "cell_count": 3,
+  "total_incidents": 4,
+  "max_cell_count": 2,
+  "grid_size_meters": 100.0,
+  "bounding_box": {
+    "min_latitude": 18.5000,
+    "max_latitude": 18.5400,
+    "min_longitude": 73.8200,
+    "max_longitude": 73.8800
+  },
+  "aggregation_mode": "in_memory_spatial_binning",
+  "cells": [
+    {
+      "cell_id": "CELL-18.5196-73.8436",
+      "latitude": 18.5196,
+      "longitude": 73.8436,
+      "point_count": 2,
+      "normalized_weight": 1.0,
+      "dominant_event_type": "POTHOLE",
+      "dominant_severity": "HIGH",
+      "incident_ids": ["INC-000001", "INC-000003"]
+    }
+  ]
+}
+```
 
 ### Idempotency & Conflict Rules
 - Re-submitting an existing `event_id`, `incident_id`, or `ticket_id` with an identical payload returns `201 Created` with `"duplicate": true`.
 - Submitting an existing ID with a modified or conflicting payload returns `409 Conflict`.
 - Malformed payloads or invalid contract values return `422 Unprocessable Entity`.
+- Subscribers process MQTT QoS 1 duplicate deliveries idempotently using stable `advisory_id` keys.
+- Older event observations (historical replay) do not overwrite newer ticket resolution state.
+
+

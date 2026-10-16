@@ -39,6 +39,10 @@ class MQTTTransport:
         self.keepalive = keepalive
         self.client = None
         self.is_connected = False
+        self._advisory_callback = None
+        self._route_id = None
+        self.seen_advisories: set[str] = set()
+        self.received_advisories: list[dict] = []
         self._init_client()
 
     def _init_client(self) -> None:
@@ -57,6 +61,7 @@ class MQTTTransport:
 
             self.client.on_connect = self._on_connect
             self.client.on_disconnect = self._on_disconnect
+            self.client.on_message = self._on_message
 
         except ImportError:
             logger.warning("paho-mqtt not available; MQTT transport will operate in offline mock mode")
@@ -66,6 +71,8 @@ class MQTTTransport:
         if rc == 0:
             self.is_connected = True
             logger.info("Connected to MQTT broker at %s:%d", self.host, self.port)
+            if self._advisory_callback:
+                self._resubscribe_advisories()
         else:
             self.is_connected = False
             logger.warning("MQTT connection failed with code %s", rc)
@@ -73,6 +80,41 @@ class MQTTTransport:
     def _on_disconnect(self, client, userdata, rc, *args) -> None:
         self.is_connected = False
         logger.info("Disconnected from MQTT broker")
+
+    def _on_message(self, client, userdata, message) -> None:
+        """Handle incoming MQTT messages, deduplicating QoS 1 advisories."""
+        try:
+            payload_str = message.payload.decode("utf-8")
+            data = json.loads(payload_str)
+            if message.topic.startswith("beyonders/advisories/"):
+                adv_id = data.get("advisory_id")
+                if adv_id:
+                    if adv_id in self.seen_advisories:
+                        logger.debug("Dropped duplicate advisory %s", adv_id)
+                        return
+                    self.seen_advisories.add(adv_id)
+                    self.received_advisories.append(data)
+                    if self._advisory_callback:
+                        self._advisory_callback(data)
+        except Exception as e:
+            logger.warning("Error processing incoming MQTT message: %s", e)
+
+    def subscribe_advisories(self, callback, route_id: Optional[str] = None) -> None:
+        """Subscribe to hazard advisories (global and route-specific) with QoS 1."""
+        self._advisory_callback = callback
+        self._route_id = route_id
+        if self.is_connected and self.client:
+            self._resubscribe_advisories()
+
+    def _resubscribe_advisories(self) -> None:
+        """Helper to subscribe to advisory topics."""
+        try:
+            self.client.subscribe("beyonders/advisories/v1", qos=1)
+            if self._route_id:
+                self.client.subscribe(f"beyonders/advisories/v1/{self._route_id}", qos=1)
+            logger.info("Subscribed to hazard advisories (route: %s)", self._route_id)
+        except Exception as e:
+            logger.warning("Failed to subscribe to advisories: %s", e)
 
     def connect(self) -> bool:
         """Connect to broker asynchronously."""

@@ -231,4 +231,103 @@ class TestDashboardIntegration(unittest.TestCase):
         self.assertEqual(img_res.status_code, 200)
         self.assertIn("image/jpeg", img_res.headers.get("content-type", ""))
 
+    def test_frontend_auth_modal_and_role_tokens(self) -> None:
+        """Verify frontend contains login modal, quick-fill chips, and authFetch token management."""
+        content = self.dashboard_html.read_text(encoding="utf-8")
+        self.assertIn("loginModal", content)
+        self.assertIn("operatorAuthBtn", content)
+        self.assertIn("quickFillCredentials", content)
+        self.assertIn("handleLoginSubmit", content)
+        self.assertIn("logoutOperator", content)
+        self.assertIn("Authorization", content)
+        self.assertIn("Bearer ", content)
+
+        # Verify backend /api/v1/auth/token contract with default admin
+        res = self.client.post("/api/v1/auth/token", json={"username": "admin", "password": "admin123"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("access_token", data)
+        self.assertEqual(data.get("role"), "ADMIN")
+
+    def test_frontend_hazard_advisories_integration(self) -> None:
+        """Verify frontend contains active advisories banner, danger circle rendering, and API sync."""
+        content = self.dashboard_html.read_text(encoding="utf-8")
+        self.assertIn("activeAdvisoriesBanner", content)
+        self.assertIn("fetchActiveAdvisories", content)
+        self.assertIn("renderAdvisoryLayers", content)
+        self.assertIn("updateAdvisoriesBanner", content)
+        self.assertIn("Danger Radius:</b>", content)
+        self.assertIn("radiusMeters", content)
+        self.assertIn("ADVISORY_ISSUED", content)
+
+        # Verify backend GET /api/v1/advisories endpoint
+        res = self.client.get("/api/v1/advisories")
+        self.assertEqual(res.status_code, 200)
+        self.assertIsInstance(res.json(), list)
+
+    def test_frontend_repair_verification_hud_integration(self) -> None:
+        """Verify frontend contains closed-loop verification card, progress bar, and pass trigger."""
+        content = self.dashboard_html.read_text(encoding="utf-8")
+        self.assertIn("renderVerificationCardHTML", content)
+        self.assertIn("ticketVerificationCardWrap", content)
+        self.assertIn("triggerSimulateSmoothPass", content)
+        self.assertIn("Simulate Smooth Road Pass (BUS-002)", content)
+        self.assertIn("progress-bar-fill", content)
+        self.assertIn("VERIFICATION_WATCH_UPDATED", content)
+
+        # Seed and create resolved ticket to test verification watch retrieval
+        self.client.post("/api/v1/demo/seed")
+        # Advance POT-2026-000001 to RESOLVED to trigger a verification watch
+        login_res = self.client.post("/api/v1/auth/token", json={"username": "dispatcher", "password": "dispatch123"})
+        self.assertEqual(login_res.status_code, 200)
+        token = login_res.json()["access_token"]
+        auth_headers = {"Authorization": f"Bearer {token}"}
+
+        patch_res = self.client.patch("/api/v1/tickets/POT-2026-000001/status?new_status=RESOLVED", headers=auth_headers)
+        self.assertEqual(patch_res.status_code, 200)
+
+        # Test verification watch endpoint
+        v_res = self.client.get("/api/v1/tickets/POT-2026-000001/verification", headers=auth_headers)
+        self.assertEqual(v_res.status_code, 200)
+        v_data = v_res.json()
+        self.assertEqual(v_data.get("ticket_id"), "POT-2026-000001")
+
+        # Test smooth pass simulation endpoint
+        smooth_res = self.client.post(
+            "/api/v1/tickets/POT-2026-000001/verify-smooth",
+            headers=auth_headers,
+            json={"bus_id": "BUS-002", "confidence": 0.95}
+        )
+        self.assertEqual(smooth_res.status_code, 200)
+
+    def test_frontend_workorder_pdf_download_integration(self) -> None:
+        """Verify frontend contains work-order PDF download action and backend generates valid PDF."""
+        content = self.dashboard_html.read_text(encoding="utf-8")
+        self.assertIn("downloadWorkOrderPdf", content)
+        self.assertIn("Work-Order (PDF)", content)
+        self.assertIn("workorder.pdf", content)
+
+        # Test backend PDF generation endpoint
+        pdf_res = self.client.get("/api/v1/tickets/POT-2026-000001/workorder.pdf")
+        self.assertEqual(pdf_res.status_code, 200)
+        self.assertEqual(pdf_res.headers.get("content-type"), "application/pdf")
+        self.assertTrue(pdf_res.content.startswith(b"%PDF"))
+
+    def test_frontend_density_heatmap_toggle_integration(self) -> None:
+        """Verify frontend contains density heatmap toggle and backend returns aggregated grid."""
+        content = self.dashboard_html.read_text(encoding="utf-8")
+        self.assertIn("mapHeatmapToggleBtn", content)
+        self.assertIn("toggleDensityHeatmap", content)
+        self.assertIn("api/v1/analytics/heatmap", content)
+        self.assertIn("Spatial Density Cell", content)
+
+        # Test backend heatmap query
+        heat_res = self.client.get("/api/v1/analytics/heatmap?min_lat=18.49&max_lat=18.55&min_lon=73.81&max_lon=73.87&grid_size_meters=150")
+        self.assertEqual(heat_res.status_code, 200)
+        h_data = heat_res.json()
+        self.assertIn("cells", h_data)
+        self.assertIn("total_incidents", h_data)
+        self.assertIn("cell_count", h_data)
+
+
 

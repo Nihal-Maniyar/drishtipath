@@ -13,14 +13,44 @@ logger = logging.getLogger("urban_intelligence.backend")
 
 from fastapi import (
     APIRouter,
+    Depends,
     FastAPI,
     HTTPException,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+
+try:
+    from backend.app.core.security import (
+        UserAccount,
+        get_current_user,
+        require_role,
+        verify_bus_auth,
+    )
+    from backend.app.routers.auth import router as auth_router
+    from backend.app.routers.advisory import router as advisory_router
+    from backend.app.routers.verification import router as verification_router
+    from backend.app.routers.analytics import router as analytics_router
+    from backend.app.services.advisory_service import advisory_service
+    from backend.app.services.verification_service import verification_service
+    from backend.app.services.pdf_service import pdf_service
+except ImportError:
+    from app.core.security import (
+        UserAccount,
+        get_current_user,
+        require_role,
+        verify_bus_auth,
+    )
+    from app.routers.auth import router as auth_router
+    from app.routers.advisory import router as advisory_router
+    from app.routers.verification import router as verification_router
+    from app.routers.analytics import router as analytics_router
+    from app.services.advisory_service import advisory_service
+    from app.services.verification_service import verification_service
+    from app.services.pdf_service import pdf_service
 
 # Handle imports whether launched from root or backend directory
 try:
@@ -109,6 +139,8 @@ async def lifespan(app: FastAPI):
         try:
             mqtt_consumer = MQTTEventConsumer(on_event_received=on_mqtt_message)
             mqtt_consumer.start()
+            if mqtt_consumer.client:
+                advisory_service.set_mqtt_client(mqtt_consumer.client)
         except Exception as e:
             logger.debug("MQTT consumer startup bypassed: %s", e)
 
@@ -576,6 +608,10 @@ init_default_buses()
 # ---------------------------------------------------------------------------
 
 api_router = APIRouter()
+api_router.include_router(auth_router)
+api_router.include_router(advisory_router)
+api_router.include_router(verification_router)
+api_router.include_router(analytics_router)
 
 
 # ---------------------------------------------------------------------------
@@ -768,7 +804,10 @@ def seed_demo_endpoint():
 # ---------------------------------------------------------------------------
 
 @api_router.post("/simulators/trigger", tags=["Platform"])
-async def trigger_simulator_scenario(payload: Optional[Dict[str, Any]] = None):
+async def trigger_simulator_scenario(
+    payload: Optional[Dict[str, Any]] = None,
+    current_user: UserAccount = Depends(require_role(["ADMIN", "DISPATCHER"])),
+):
     """Trigger an interactive demonstration scenario and broadcast live updates."""
     scenario = (payload or {}).get("scenario", "dual_bus")
 
@@ -898,6 +937,17 @@ async def trigger_simulator_scenario(payload: Optional[Dict[str, Any]] = None):
         }
         tickets_by_id[tkt["ticket_id"]] = tkt
         await ws_manager.broadcast({"type": "TICKET_CREATED", "data": tkt})
+
+        # 5. Downstream hazard advisory for corridor
+        adv = advisory_service.evaluate_and_publish(
+            incident=inc,
+            fleet=buses_by_id,
+            source_bus_id="BUS-001",
+            route_id="ROUTE-PUNE-FC",
+        )
+        if adv:
+            await ws_manager.broadcast({"type": "ADVISORY_ISSUED", "data": adv.model_dump()})
+
         await ws_manager.broadcast({"type": "STATS_UPDATED", "data": get_platform_stats()})
 
         return {"message": "Dual-bus scenario executed successfully", "incident_id": "INC-000001", "ticket_id": "POT-2026-000001"}
@@ -944,6 +994,7 @@ async def trigger_simulator_scenario(payload: Optional[Dict[str, Any]] = None):
                 step["done"] = True
                 if step.get("time") == "Pending":
                     step["time"] = now
+            verification_service.schedule_watch(tkt)
             await ws_manager.broadcast({"type": "TICKET_STATUS_UPDATED", "data": tkt})
 
         inc = incidents_by_id.get("INC-000001")
@@ -1009,6 +1060,40 @@ async def ingest_event(event: Event):
     # Record normalized observation record
     obs = create_observation_from_event(event, incoming["timestamp"])
     observations_by_id[obs["observation_id"]] = obs
+
+    # Closed-loop automated repair verification check
+    updated_watch, affected_ticket = verification_service.process_observation(
+        obs, tickets_by_id
+    )
+    if affected_ticket:
+        if affected_ticket["status"] == "REPORTED":
+            # Failed repair reopened!
+            safe_db_persist(
+                db_transition_ticket_status,
+                ticket_id=affected_ticket["ticket_id"],
+                new_status="REPORTED",
+                changed_by="system_verifier",
+                notes=updated_watch.notes if updated_watch else "FAILED_REPAIR",
+            )
+            await ws_manager.broadcast({
+                "type": "TICKET_REOPENED",
+                "data": affected_ticket,
+                "watch": updated_watch.model_dump() if updated_watch else None,
+            })
+        elif affected_ticket.get("verification_status") == "VERIFIED_RESOLVED":
+            # Successfully verified repair
+            safe_db_persist(
+                db_transition_ticket_status,
+                ticket_id=affected_ticket["ticket_id"],
+                new_status="RESOLVED",
+                changed_by="system_verifier",
+                notes=updated_watch.notes if updated_watch else "VERIFIED_RESOLVED",
+            )
+            await ws_manager.broadcast({
+                "type": "TICKET_VERIFIED",
+                "data": affected_ticket,
+                "watch": updated_watch.model_dump() if updated_watch else None,
+            })
 
     # Database persistence (idempotent event + observation)
     safe_db_persist(insert_event_idempotent, incoming)
@@ -1107,6 +1192,23 @@ async def ingest_event(event: Event):
             "longitude": event.longitude,
             "last_event": event.event_id,
         }
+
+    # Evaluate and publish downstream hazard advisory if qualified
+    if fused_incident:
+        try:
+            adv = advisory_service.evaluate_and_publish(
+                incident=fused_incident,
+                fleet=buses_by_id,
+                source_bus_id=event.bus_id,
+                route_id=getattr(event, "route_id", None) or fused_incident.get("route_id"),
+            )
+            if adv:
+                await ws_manager.broadcast({
+                    "type": "ADVISORY_ISSUED",
+                    "data": adv.model_dump(),
+                })
+        except Exception as e:
+            logger.debug("Advisory evaluation skipped/error: %s", e)
 
     # Broadcast event and stats to all active WebSocket clients in realtime
     await ws_manager.broadcast({
@@ -1244,7 +1346,10 @@ def get_incident(incident_id: str):
 # ---------------------------------------------------------------------------
 
 @api_router.post("/tickets", status_code=status.HTTP_201_CREATED, tags=["Tickets"])
-async def create_ticket(ticket: Ticket):
+async def create_ticket(
+    ticket: Ticket,
+    current_user: UserAccount = Depends(require_role(["DISPATCHER", "ADMIN"])),
+):
     data = ticket.model_dump(mode="json")
     data["created_at"] = iso_utc(ticket.created_at)
     data["updated_at"] = iso_utc(ticket.updated_at)
@@ -1311,7 +1416,11 @@ def get_ticket(ticket_id: str):
 
 
 @api_router.patch("/tickets/{ticket_id}/status", tags=["Tickets"])
-async def update_ticket_status(ticket_id: str, new_status: str):
+async def update_ticket_status(
+    ticket_id: str,
+    new_status: str,
+    current_user: UserAccount = Depends(require_role(["DISPATCHER", "ADMIN"])),
+):
     if new_status not in TICKET_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1348,8 +1457,12 @@ async def update_ticket_status(ticket_id: str, new_status: str):
         db_transition_ticket_status,
         ticket_id=ticket_id,
         new_status=new_status,
-        changed_by="dispatcher",
+        changed_by=current_user.username,
     )
+
+    # Schedule automated repair verification watch
+    if new_status == "RESOLVED":
+        verification_service.schedule_watch(ticket)
 
     await ws_manager.broadcast({
         "type": "TICKET_STATUS_UPDATED",
@@ -1382,6 +1495,27 @@ def get_ticket_map(ticket_id: str):
         "longitude": longitude,
         "google_maps_url": google_maps_url,
     }
+
+
+@api_router.get("/tickets/{ticket_id}/workorder.pdf", tags=["Tickets"])
+def get_ticket_workorder_pdf(
+    ticket_id: str,
+    current_user: UserAccount = Depends(require_role(["DISPATCHER", "ADMIN"])),
+):
+    """Generate and return a standardized contractor work-order PDF with map QR code and evidence."""
+    ticket = tickets_by_id.get(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    pdf_bytes = pdf_service.generate_pdf(ticket)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="workorder_{ticket_id}.pdf"',
+            "Content-Type": "application/pdf",
+        },
+    )
 
 
 # Mount routes at root and with /api/v1 prefix
