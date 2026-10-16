@@ -789,6 +789,8 @@ function setUserRole(role) {
   showToast('Security Role Updated', `Active operator role is now ${role}`, 'info');
   if (state.selectedTicketId && document.getElementById('drawer').classList.contains('open')) {
     openTicketDrawer(state.selectedTicketId);
+  } else if (state.selectedIncidentId && document.getElementById('drawer').classList.contains('open')) {
+    openIncidentDrawer(state.selectedIncidentId);
   }
   if (state.route === 'tickets') {
     renderPage();
@@ -1746,6 +1748,8 @@ function openIncidentDrawer(id) {
     ` : ''}
   `;
 
+  const canMutate = state.currentUser && (state.currentUser.role === 'DISPATCHER' || state.currentUser.role === 'ADMIN');
+
   const foot = `
     <a class="btn ghost sm" href="${gmapsLink(snappedLat, snappedLon)}" target="_blank" rel="noopener">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>
@@ -1753,7 +1757,7 @@ function openIncidentDrawer(id) {
     </a>
     ${ticket
       ? `<button class="btn primary sm" onclick="openTicketDrawer('${escapeHtml(ticket.ticket_id)}')">View Ticket</button>`
-      : `<button class="btn primary sm" onclick="raiseTicketForIncident('${escapeHtml(inc.incident_id)}')">Raise Ticket</button>`}
+      : `<button class="btn primary sm" ${!canMutate ? 'disabled title="Requires Dispatcher or Admin role"' : ''} onclick="raiseTicketForIncident('${escapeHtml(inc.incident_id)}')">${canMutate ? 'Raise Ticket' : 'Raise Ticket (Dispatcher Only)'}</button>`}
   `;
 
   openDrawer(head, body, foot);
@@ -1918,6 +1922,11 @@ function openBusDrawer(busId) {
 /* ============ TICKET ACTIONS (Real REST API calls) ============ */
 async function advanceTicketStatus(ticketId, nextStage) {
   if (!nextStage) return;
+  const canMutate = state.currentUser && (state.currentUser.role === 'DISPATCHER' || state.currentUser.role === 'ADMIN');
+  if (!canMutate) {
+    showToast('Permission Denied', 'Advancing ticket lifecycle requires Dispatcher or Admin role', 'warning');
+    return;
+  }
   try {
     const res = await authFetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/status?new_status=${encodeURIComponent(nextStage)}`, {
       method: 'PATCH',
@@ -1943,6 +1952,12 @@ async function advanceTicketStatus(ticketId, nextStage) {
 async function raiseTicketForIncident(incidentId) {
   const inc = state.incidents.find(i => i.incident_id === incidentId);
   if (!inc) return;
+
+  const canMutate = state.currentUser && (state.currentUser.role === 'DISPATCHER' || state.currentUser.role === 'ADMIN');
+  if (!canMutate) {
+    showToast('Permission Denied', 'Dispatching civic tickets requires Dispatcher or Admin role', 'warning');
+    return;
+  }
 
   const now = new Date().toISOString();
   const ticketPayload = {

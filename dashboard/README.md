@@ -71,7 +71,7 @@ Run the automated dashboard integration and hardening test suites:
 ./.venv/bin/pytest tests/test_dashboard_integration.py tests/test_dashboard_hardening.py -v
 ```
 
-All 23 combined tests verify:
+All 27 combined tests verify:
 - HTML file structure and Leaflet GIS integration.
 - FastAPI delivery of `GET /dashboard`.
 - Contract adherence of GeoJSON layers (`/incidents/geojson`, `/routes/geojson`).

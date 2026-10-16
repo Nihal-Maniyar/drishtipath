@@ -139,6 +139,37 @@ class TestDashboardHardening(unittest.TestCase):
         self.assertIn("apple-mobile-web-app-capable", self.html)
         self.assertIn("navigator.serviceWorker.register", self.html)
 
+    def test_kanban_composable_filters(self) -> None:
+        """Verify composable ticket filters (search, event type, priority, SLA urgency)."""
+        self.assertIn("tktFilterSearch", self.html)
+        self.assertIn("tktFilterType", self.html)
+        self.assertIn("tktFilterSev", self.html)
+        self.assertIn("tktFilterSLA", self.html)
+        self.assertIn("updateTicketFilter", self.html)
+        self.assertIn("resetTicketFilters", self.html)
+        self.assertIn("getFilteredTickets", self.html)
+        self.assertIn("renderKanbanColumnsHTML", self.html)
+        self.assertIn("URGENT", self.html)
+        self.assertIn("estimated_repair_sla_hours || 48) <= 24", self.html)
+
+    def test_operator_rbac_mutation_guards(self) -> None:
+        """Verify explicit client-side RBAC guards across all state mutation entrypoints."""
+        # 1. raiseTicketForIncident guard
+        self.assertIn("Dispatching civic tickets requires Dispatcher or Admin role", self.html)
+        # 2. advanceTicketStatus guard
+        self.assertIn("Advancing ticket lifecycle requires Dispatcher or Admin role", self.html)
+        # 3. moveTicketToStatus guard
+        self.assertIn("Modifying ticket status requires Dispatcher or Admin role", self.html)
+        # 4. Incident drawer button role restriction
+        self.assertIn("Raise Ticket (Dispatcher Only)", self.html)
+        self.assertIn("Requires Dispatcher or Admin role", self.html)
+        # 5. Ticket drawer role restriction
+        self.assertIn("Read-Only (Viewer)", self.html)
+        # 6. Role switch drawer reconciliation
+        self.assertIn("openIncidentDrawer(state.selectedIncidentId)", self.html)
+        # 7. Kanban drag-and-drop gating
+        self.assertIn('draggable="${canMutate ? \'true\' : \'false\'}"', self.html)
+
     def test_contract_status_alignment(self) -> None:
         """Verify contract statuses match backend schemas."""
         self.assertIn("CANDIDATE", self.html)
