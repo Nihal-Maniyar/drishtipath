@@ -39,8 +39,21 @@ Use `docs/api-contract.md` as the authoritative field names and state definition
 - Group 1: Member 1 owns AI/ML; Member 2 owns edge and the Actual Bus Simulator.
 - Group 2: Member 3 owns backend APIs; Member 4 owns database and fleet fusion.
 - Group 3: Member 5 owns GIS/dashboard; Member 6 owns integration, DevOps, CI, Docker, and the Data/Test/Demo Simulator.
-- Work on `feature/*`, `fix/*`, `docs/*`, or `test/*` branches from `develop`.
-- Never push directly to `main` or `develop`; use a pull request and one reviewer.
+
+### Parallel Two-Developer Track Assignment
+- **Developer 1 (Frontend & GIS)**: Primary branch `feature/dashboard-hardening`.
+  - Scope: `dashboard/`, Leaflet GIS map visualization, road corridor snapping displays, evidence image HUD, WebSocket client state reconciliation, and frontend UI/UX.
+- **Developer 2 (Backend & Intelligence)**: Primary branch `feature/backend-intelligence`.
+  - Scope: `backend/`, `database/`, `fusion/`, `ai/`, `bus-simulator/`, and `data-demo-simulator/`.
+  - Owns: FastAPI ingestion endpoints, contracts, WebSocket broadcasting, spatial-temporal fusion, PostGIS queries, and edge sensing pipelines.
+
+### Parallel Development & Release Gates
+- **Feature-branch-only development**: All new work MUST originate on a feature branch (`feature/*`, `fix/*`, `docs/*`, or `test/*`) branched from up-to-date `develop`.
+- **Absolute prohibition**: Never commit or push directly to `main` or `develop`.
+- **Contract change protocol**: If a cross-team interface must change, update `docs/api-contract.md` first. Developer 1 and Developer 2 must both approve the contract change before dependent code is committed.
+- **Exclusions**: Never stage `.env`, `runtime/`, `*.sqlite`, `*.db`, `*.zip`, `.venv`, credentials, or model weights.
+- **Testing & Verification Gate**: All baseline unit and integration tests (`pytest`) must pass cleanly before opening a pull request into `develop`.
+- **Integration**: Each pull request requires review and approval from the counterpart developer track and a passing CI build before merging into `develop`. Release promotion from `develop` into `main` requires a fully validated demo run.
 - `main` is stable/demo-ready. `develop` is the shared integration branch.
 
 ## Agent prompt pattern
