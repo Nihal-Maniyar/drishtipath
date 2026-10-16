@@ -1129,6 +1129,100 @@ def test_heatmap_endpoint_api(client: TestClient) -> None:
     )
     assert res_small_grid.status_code == 422
 
+    # 6. Query with target="observations"
+    res_obs = client.get(
+        "/api/v1/analytics/heatmap",
+        params={"target": "observations", "grid_size_meters": 300.0},
+    )
+    assert res_obs.status_code == 200
+    obs_data = res_obs.json()
+    assert "cells" in obs_data
+    assert "total_incidents" in obs_data
+
+
+def test_spatial_density_grid_helper() -> None:
+    """Verify aggregate_spatial_density_grid helper handles bounded queries and metric step calculation."""
+    import sqlalchemy as sa
+    from sqlalchemy.orm import sessionmaker
+    from database.models import Base, Bus, Event, Incident, Observation
+    from database.spatial import aggregate_spatial_density_grid
+
+    engine = sa.create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    try:
+        # Seed test bus, event, observation, and incident
+        bus = Bus(bus_id="BUS-099", route_id="ROUTE-TEST", is_active=True)
+        session.add(bus)
+        session.flush()
+
+        event = Event(event_id="EVT-099001", bus_id="BUS-099", source="data_demo_simulator")
+        session.add(event)
+        session.flush()
+
+        obs = Observation(
+            observation_id="OBS-099001",
+            event_id="EVT-099001",
+            bus_id="BUS-099",
+            event_type="POTHOLE",
+            timestamp=datetime.now(timezone.utc),
+            latitude=18.5204,
+            longitude=73.8567,
+            confidence=0.92,
+            severity="HIGH",
+            evidence_image="runtime/evidence/EVT-099001.jpg",
+        )
+        session.add(obs)
+
+        inc = Incident(
+            incident_id="INC-099001",
+            event_type="POTHOLE",
+            status="VERIFIED",
+            latitude=18.5204,
+            longitude=73.8567,
+            confidence=0.92,
+            severity="HIGH",
+            first_observed_at=datetime.now(timezone.utc),
+            last_observed_at=datetime.now(timezone.utc),
+        )
+        session.add(inc)
+        session.commit()
+
+        # Test incident aggregation
+        results_inc = aggregate_spatial_density_grid(
+            session=session,
+            min_lat=18.45,
+            min_lon=73.75,
+            max_lat=18.60,
+            max_lon=73.95,
+            grid_size_meters=150.0,
+            target="incidents",
+        )
+        assert isinstance(results_inc, list)
+        assert len(results_inc) == 1
+        assert results_inc[0]["incident_id"] == "INC-099001"
+
+        # Test observation aggregation
+        results_obs = aggregate_spatial_density_grid(
+            session=session,
+            min_lat=18.45,
+            min_lon=73.75,
+            max_lat=18.60,
+            max_lon=73.95,
+            grid_size_meters=150.0,
+            target="observations",
+        )
+        assert isinstance(results_obs, list)
+        assert len(results_obs) == 1
+        assert results_obs[0]["incident_id"] == "OBS-099001"
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+        engine.dispose()
+
+
 
 
 

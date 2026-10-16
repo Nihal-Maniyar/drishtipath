@@ -190,7 +190,7 @@ Format: `VW-YYYY-XXXXXX`.
 
 ## Spatial Density Heatmap — GIS aggregation
 
-The spatial density aggregation endpoint `GET /api/v1/analytics/heatmap` aggregates defect incidents within a bounded viewport into metric spatial grid cells. This prevents returning excessive raw point coordinates to the GIS dashboard, while providing normalized intensity weights (from `0.0` through `1.0`) for Leaflet heatmap canvas rendering.
+The spatial density aggregation endpoint `GET /api/v1/analytics/heatmap` aggregates defects within a bounded viewport into metric spatial grid cells. It supports aggregating both fused `incidents` (default) and raw `observations` via the `target` parameter (`target=incidents` or `target=observations`). This prevents returning excessive raw point coordinates to the GIS dashboard, while providing normalized intensity weights (from `0.0` through `1.0`) for Leaflet heatmap canvas rendering.
 
 ```json
 {

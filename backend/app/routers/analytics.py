@@ -48,6 +48,7 @@ def get_spatial_heatmap(
         alias="status",
         description="Filter by incident status: CANDIDATE, VERIFIED, RESOLVED",
     ),
+    target: str = Query("incidents", description="Aggregation target: 'incidents' or 'observations'"),
 ):
     """Retrieve spatial density heatmap cells for the specified geographic viewport.
 
@@ -75,14 +76,15 @@ def get_spatial_heatmap(
             detail=f"Invalid bounding box parameters: {err}",
         )
 
-    # 3. Retrieve in-memory and database incidents
+    # 3. Retrieve in-memory and database incidents/observations
     try:
-        from backend.app.main import incidents_by_id
+        from backend.app.main import incidents_by_id, observations_by_id
     except ImportError:
         try:
-            from app.main import incidents_by_id
+            from app.main import incidents_by_id, observations_by_id
         except ImportError:
             incidents_by_id = {}
+            observations_by_id = {}
 
     session = None
     try:
@@ -101,6 +103,8 @@ def get_spatial_heatmap(
             status=incident_status,
             session=session,
             in_memory_incidents=incidents_by_id,
+            in_memory_observations=observations_by_id,
+            target=target,
         )
         return result
     finally:

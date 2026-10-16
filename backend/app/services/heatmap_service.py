@@ -211,8 +211,10 @@ class HeatmapService:
         status: Optional[str] = None,
         session: Optional[Session] = None,
         in_memory_incidents: Optional[Dict[str, Dict[str, Any]]] = None,
+        in_memory_observations: Optional[Dict[str, Dict[str, Any]]] = None,
+        target: str = "incidents",
     ) -> SpatialHeatmapResponse:
-        """Fetch matching incidents from PostGIS or in-memory repository and aggregate.
+        """Fetch matching entities from PostGIS or in-memory repository and aggregate.
 
         Args:
             bounding_box: Target geographic bounding box.
@@ -222,6 +224,8 @@ class HeatmapService:
             status: Optional filter by incident status.
             session: Optional SQLAlchemy Session for PostGIS querying.
             in_memory_incidents: In-memory dictionary of incidents.
+            in_memory_observations: In-memory dictionary of raw observations.
+            target: 'incidents' or 'observations'.
 
         Returns:
             SpatialHeatmapResponse.
@@ -232,63 +236,58 @@ class HeatmapService:
         # 1. Attempt PostGIS GiST-indexed database query if session is provided
         if session is not None:
             try:
-                from database.spatial import query_incidents_in_bbox
+                from database.spatial import aggregate_spatial_density_grid
 
-                db_incidents = query_incidents_in_bbox(
+                db_results = aggregate_spatial_density_grid(
                     session=session,
                     min_lat=bounding_box.min_latitude,
                     min_lon=bounding_box.min_longitude,
                     max_lat=bounding_box.max_latitude,
                     max_lon=bounding_box.max_longitude,
-                    status=status,
+                    grid_size_meters=grid_size_meters,
                     event_type=event_type,
+                    severity=severity,
+                    status=status,
+                    target=target,
                 )
-                if db_incidents:
+                if db_results:
                     aggregation_mode = "postgis_snap_to_grid"
-                    for inc in db_incidents:
-                        if severity and inc.severity != severity:
-                            continue
-                        filtered.append({
-                            "incident_id": inc.incident_id,
-                            "latitude": inc.latitude,
-                            "longitude": inc.longitude,
-                            "event_type": inc.event_type,
-                            "severity": inc.severity,
-                            "status": inc.status,
-                        })
+                    filtered.extend(db_results)
             except Exception:
                 # Fall back gracefully to in-memory store if DB query fails or unconfigured
                 filtered = []
 
-        # 2. If no DB incidents found, filter in-memory store
-        if not filtered and in_memory_incidents:
-            for inc in in_memory_incidents.values():
-                lat = float(inc.get("latitude", 0.0))
-                lon = float(inc.get("longitude", 0.0))
+        # 2. If no DB records found, filter in-memory store based on target
+        if not filtered:
+            data_source = in_memory_observations if target == "observations" else in_memory_incidents
+            if data_source:
+                for item in data_source.values():
+                    lat = float(item.get("latitude", 0.0))
+                    lon = float(item.get("longitude", 0.0))
 
-                # Spatial bounding box filter
-                if not (
-                    bounding_box.min_latitude <= lat <= bounding_box.max_latitude
-                    and bounding_box.min_longitude <= lon <= bounding_box.max_longitude
-                ):
-                    continue
+                    # Spatial bounding box filter
+                    if not (
+                        bounding_box.min_latitude <= lat <= bounding_box.max_latitude
+                        and bounding_box.min_longitude <= lon <= bounding_box.max_longitude
+                    ):
+                        continue
 
-                # Defect attributes filter
-                if event_type and inc.get("event_type") != event_type:
-                    continue
-                if severity and inc.get("severity") != severity:
-                    continue
-                if status and inc.get("status") != status:
-                    continue
+                    # Defect attributes filter
+                    if event_type and item.get("event_type") != event_type:
+                        continue
+                    if severity and item.get("severity") != severity:
+                        continue
+                    if status and item.get("status") != status:
+                        continue
 
-                filtered.append({
-                    "incident_id": inc.get("incident_id"),
-                    "latitude": lat,
-                    "longitude": lon,
-                    "event_type": inc.get("event_type", "UNKNOWN"),
-                    "severity": inc.get("severity", "MEDIUM"),
-                    "status": inc.get("status", "CANDIDATE"),
-                })
+                    filtered.append({
+                        "incident_id": item.get("incident_id") or item.get("observation_id"),
+                        "latitude": lat,
+                        "longitude": lon,
+                        "event_type": item.get("event_type", "UNKNOWN"),
+                        "severity": item.get("severity", "MEDIUM"),
+                        "status": item.get("status", "CANDIDATE"),
+                    })
 
         return self.aggregate_incidents(
             incidents=filtered,
