@@ -33,6 +33,7 @@ try:
     from backend.app.routers.auth import router as auth_router
     from backend.app.routers.advisory import router as advisory_router
     from backend.app.routers.verification import router as verification_router
+    from backend.app.routers.analytics import router as analytics_router
     from backend.app.services.advisory_service import advisory_service
     from backend.app.services.verification_service import verification_service
     from backend.app.services.pdf_service import pdf_service
@@ -46,6 +47,7 @@ except ImportError:
     from app.routers.auth import router as auth_router
     from app.routers.advisory import router as advisory_router
     from app.routers.verification import router as verification_router
+    from app.routers.analytics import router as analytics_router
     from app.services.advisory_service import advisory_service
     from app.services.verification_service import verification_service
     from app.services.pdf_service import pdf_service
@@ -609,6 +611,7 @@ api_router = APIRouter()
 api_router.include_router(auth_router)
 api_router.include_router(advisory_router)
 api_router.include_router(verification_router)
+api_router.include_router(analytics_router)
 
 
 # ---------------------------------------------------------------------------

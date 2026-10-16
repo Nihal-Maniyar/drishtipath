@@ -128,6 +128,7 @@ The backend exposes these v1 endpoints (available at root and `/api/v1` prefix):
 | `GET` | `/tickets/{ticket_id}` | None | `200 OK` | Retrieve ticket by ID (`404` if not found) |
 | `PATCH` | `/tickets/{ticket_id}/status` | Query `new_status` | `200 OK` | Transition ticket lifecycle status (`400` if invalid) |
 | `GET` | `/tickets/{ticket_id}/map` | None | `200 OK` | Get Google Maps navigation link and coordinates |
+| `GET` | `/tickets/{ticket_id}/workorder.pdf` | None | `200 OK` | Download standardized PMC contractor work-order PDF with QR navigation |
 | `GET` | `/advisories` | None | `200 OK` | List active downstream hazard advisories |
 | `GET` | `/advisories/{advisory_id}` | None | `200 OK` | Retrieve single advisory (`404` if not found) |
 | `GET` | `/advisories/bus/{bus_id}` | None | `200 OK` | Retrieve active hazard advisories applicable to specific bus |
@@ -136,6 +137,7 @@ The backend exposes these v1 endpoints (available at root and `/api/v1` prefix):
 | `GET` | `/tickets/{ticket_id}/verification` | None | `200 OK` | Retrieve verification watch state for a specific ticket |
 | `POST` | `/verification/evaluate-expired` | None | `200 OK` | Evaluate and transition lapsed verification watches |
 | `POST` | `/tickets/{ticket_id}/verify-smooth` | `SmoothObservationSimulateRequest` | `200 OK` | Simulate smooth road pass over repaired ticket |
+| `GET` | `/analytics/heatmap` | Query bbox and filters | `200 OK` | Bounded spatial density aggregation for Leaflet GIS heatmap rendering |
 
 ## Hazard Advisory — downstream bus warning
 
@@ -183,6 +185,38 @@ Format: `VW-YYYY-XXXXXX`.
   "defect_observations_count": 0,
   "smooth_buses": ["BUS-002"],
   "defect_buses": []
+}
+```
+
+## Spatial Density Heatmap — GIS aggregation
+
+The spatial density aggregation endpoint `GET /api/v1/analytics/heatmap` aggregates defect incidents within a bounded viewport into metric spatial grid cells. This prevents returning excessive raw point coordinates to the GIS dashboard, while providing normalized intensity weights (from `0.0` through `1.0`) for Leaflet heatmap canvas rendering.
+
+```json
+{
+  "cell_count": 3,
+  "total_incidents": 4,
+  "max_cell_count": 2,
+  "grid_size_meters": 100.0,
+  "bounding_box": {
+    "min_latitude": 18.5000,
+    "max_latitude": 18.5400,
+    "min_longitude": 73.8200,
+    "max_longitude": 73.8800
+  },
+  "aggregation_mode": "in_memory_spatial_binning",
+  "cells": [
+    {
+      "cell_id": "CELL-18.5196-73.8436",
+      "latitude": 18.5196,
+      "longitude": 73.8436,
+      "point_count": 2,
+      "normalized_weight": 1.0,
+      "dominant_event_type": "POTHOLE",
+      "dominant_severity": "HIGH",
+      "incident_ids": ["INC-000001", "INC-000003"]
+    }
+  ]
 }
 ```
 

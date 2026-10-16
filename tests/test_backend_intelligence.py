@@ -924,4 +924,211 @@ def test_workorder_pdf_access_control(client: TestClient, monkeypatch: pytest.Mo
     assert res_unauth.status_code == 401
 
 
+# ---------------------------------------------------------------------------
+# 5. Spatial Density Heatmaps & PostGIS Aggregation Tests (Phase E)
+# ---------------------------------------------------------------------------
+
+def test_bounding_box_validation() -> None:
+    """Verify BoundingBox geographic coordinate constraints and span limits."""
+    from pydantic import ValidationError
+    from backend.app.schemas.heatmap import BoundingBox
+
+    # Valid Pune bounding box
+    bbox = BoundingBox(
+        min_latitude=18.4500,
+        max_latitude=18.6000,
+        min_longitude=73.7500,
+        max_longitude=73.9500,
+    )
+    assert bbox.min_latitude == 18.4500
+    assert bbox.max_latitude == 18.6000
+
+    # Inverted latitude (min > max)
+    with pytest.raises(ValidationError, match="cannot be greater than max_latitude"):
+        BoundingBox(
+            min_latitude=18.65,
+            max_latitude=18.50,
+            min_longitude=73.75,
+            max_longitude=73.95,
+        )
+
+    # Inverted longitude (min > max)
+    with pytest.raises(ValidationError, match="cannot be greater than max_longitude"):
+        BoundingBox(
+            min_latitude=18.45,
+            max_latitude=18.60,
+            min_longitude=73.95,
+            max_longitude=73.75,
+        )
+
+    # Coordinate out of WGS84 range
+    with pytest.raises(ValidationError):
+        BoundingBox(
+            min_latitude=-95.0,
+            max_latitude=18.60,
+            min_longitude=73.75,
+            max_longitude=73.95,
+        )
+
+    # Excessive span (> 5.0 degrees)
+    with pytest.raises(ValidationError, match="exceeds maximum 5.0° limit"):
+        BoundingBox(
+            min_latitude=10.0,
+            max_latitude=16.5,
+            min_longitude=70.0,
+            max_longitude=72.0,
+        )
+
+
+def test_heatmap_aggregation_logic() -> None:
+    """Verify metric grid binning, normalized intensity calculation, and dominant attributes."""
+    from backend.app.schemas.heatmap import BoundingBox
+    from backend.app.services.heatmap_service import heatmap_service
+
+    bbox = BoundingBox(
+        min_latitude=18.5000,
+        max_latitude=18.5400,
+        min_longitude=73.8200,
+        max_longitude=73.8600,
+    )
+
+    # Empty list
+    empty_resp = heatmap_service.aggregate_incidents([], bbox, grid_size_meters=100.0)
+    assert empty_resp.cell_count == 0
+    assert empty_resp.total_incidents == 0
+    assert empty_resp.max_cell_count == 0
+    assert empty_resp.cells == []
+
+    # Synthesize cluster of incidents
+    # Cell A: 3 high-severity potholes at ~18.5196, 73.8436
+    # Cell B: 1 low-severity garbage at ~18.5050, 73.8250
+    # Out-of-bounds: 1 at 19.1000, 74.0000 (should be discarded)
+    sample_incidents = [
+        {
+            "incident_id": "INC-000001",
+            "latitude": 18.51960,
+            "longitude": 73.84360,
+            "event_type": "POTHOLE",
+            "severity": "HIGH",
+        },
+        {
+            "incident_id": "INC-000002",
+            "latitude": 18.51965,
+            "longitude": 73.84365,
+            "event_type": "POTHOLE",
+            "severity": "MEDIUM",
+        },
+        {
+            "incident_id": "INC-000003",
+            "latitude": 18.51958,
+            "longitude": 73.84358,
+            "event_type": "POTHOLE",
+            "severity": "HIGH",
+        },
+        {
+            "incident_id": "INC-000004",
+            "latitude": 18.50500,
+            "longitude": 73.82500,
+            "event_type": "GARBAGE",
+            "severity": "LOW",
+        },
+        {
+            "incident_id": "INC-OUTSIDE",
+            "latitude": 19.10000,
+            "longitude": 74.00000,
+            "event_type": "POTHOLE",
+            "severity": "HIGH",
+        },
+    ]
+
+    resp = heatmap_service.aggregate_incidents(sample_incidents, bbox, grid_size_meters=100.0)
+
+    # 4 valid incidents across 2 distinct cells
+    assert resp.total_incidents == 4
+    assert resp.cell_count == 2
+    assert resp.max_cell_count == 3
+
+    # Primary cluster cell
+    top_cell = resp.cells[0]
+    assert top_cell.point_count == 3
+    assert top_cell.normalized_weight == 1.0
+    assert top_cell.dominant_event_type == "POTHOLE"
+    assert top_cell.dominant_severity == "HIGH"
+    assert len(top_cell.incident_ids) == 3
+
+    # Secondary cell
+    sec_cell = resp.cells[1]
+    assert sec_cell.point_count == 1
+    assert sec_cell.normalized_weight == round(1.0 / 3.0, 4)
+    assert sec_cell.dominant_event_type == "GARBAGE"
+    assert sec_cell.dominant_severity == "LOW"
+    assert len(sec_cell.incident_ids) == 1
+
+
+def test_heatmap_endpoint_api(client: TestClient) -> None:
+    """Verify GET /api/v1/analytics/heatmap endpoint with default and customized viewports."""
+    # 1. Query with defaults
+    res_default = client.get("/api/v1/analytics/heatmap")
+    assert res_default.status_code == 200
+    data = res_default.json()
+    assert "cell_count" in data
+    assert "total_incidents" in data
+    assert "max_cell_count" in data
+    assert "grid_size_meters" in data
+    assert "bounding_box" in data
+    assert "cells" in data
+    assert data["grid_size_meters"] == 100.0
+
+    # 2. Query with explicit bounding box covering Pune seed data
+    res_bbox = client.get(
+        "/api/v1/analytics/heatmap",
+        params={
+            "min_lat": 18.48,
+            "max_lat": 18.55,
+            "min_lon": 73.80,
+            "max_lon": 73.89,
+            "grid_size_meters": 200.0,
+        },
+    )
+    assert res_bbox.status_code == 200
+    bbox_data = res_bbox.json()
+    assert bbox_data["grid_size_meters"] == 200.0
+    assert bbox_data["total_incidents"] >= 1
+    for cell in bbox_data["cells"]:
+        assert 0.0 <= cell["normalized_weight"] <= 1.0
+        assert cell["point_count"] >= 1
+        assert cell["cell_id"].startswith("CELL-")
+
+    # 3. Query with event_type filter
+    res_pothole = client.get(
+        "/api/v1/analytics/heatmap",
+        params={"event_type": "POTHOLE"},
+    )
+    assert res_pothole.status_code == 200
+    pothole_data = res_pothole.json()
+    for cell in pothole_data["cells"]:
+        assert cell["dominant_event_type"] == "POTHOLE"
+
+    # 4. Error on inverted coordinates
+    res_err = client.get(
+        "/api/v1/analytics/heatmap",
+        params={
+            "min_lat": 18.90,
+            "max_lat": 18.20,  # inverted
+            "min_lon": 73.80,
+            "max_lon": 73.90,
+        },
+    )
+    assert res_err.status_code == 400
+    assert "cannot be greater than max_latitude" in res_err.json()["detail"]
+
+    # 5. Error on out-of-range grid_size_meters
+    res_small_grid = client.get(
+        "/api/v1/analytics/heatmap",
+        params={"grid_size_meters": 5.0},  # below minimum 10.0m
+    )
+    assert res_small_grid.status_code == 422
+
+
+
 
