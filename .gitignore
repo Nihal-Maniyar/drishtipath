@@ -110,6 +110,7 @@ models/
 data/
 *.mp4
 *.avi
+*.zip
 
 # Training outputs
 runs/
