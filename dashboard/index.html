@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Fleet Sensing Urban Intel — Pune Mobility GIS Command Center</title>
+<meta name="theme-color" content="#0E1B2C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Fleet%20Sensing%20Urban%20Intel%22%2C%22short_name%22%3A%22FleetSensing%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230E1B2C%22%2C%22theme_color%22%3A%22%230E1B2C%22%7D">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
@@ -508,6 +512,146 @@ select, .btn, input[type=text] {
   .kanban { grid-template-columns: 1fr 1fr; }
   .search { display: none; }
 }
+
+/* ============ SIMULATION TOOLBAR ============ */
+.sim-toolbar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.sim-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sim-toolbar-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+}
+.sim-toolbar-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--teal-soft);
+  color: var(--teal-ink);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+.sim-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sim-btn {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.sim-btn:hover:not(:disabled) {
+  background: var(--surface-raised);
+  border-color: var(--teal);
+  color: var(--teal);
+  transform: translateY(-1px);
+}
+.sim-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.sim-btn.primary {
+  background: var(--teal);
+  color: #fff;
+  border-color: var(--teal);
+}
+.sim-btn.primary:hover:not(:disabled) {
+  background: var(--teal-ink);
+  color: #fff;
+}
+
+/* ============ ROLE SELECTOR & AUTH UI ============ */
+.role-select {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  cursor: pointer;
+  outline: none;
+}
+.role-select:focus {
+  border-color: var(--teal);
+}
+
+/* ============ TOAST NOTIFICATIONS ============ */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  animation: toast-in 0.22s ease-out;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast.toast-hiding {
+  opacity: 0;
+  transform: translateY(8px);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toast-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.toast-content { flex: 1; }
+.toast-title { font-weight: 700; font-size: 12px; margin-bottom: 2px; }
+.toast-desc { font-size: 11px; color: var(--ink-soft); line-height: 1.35; }
+.toast.info .toast-icon { color: var(--teal); }
+.toast.success .toast-icon { color: var(--green); }
+.toast.warning .toast-icon { color: var(--amber); }
+.toast.error .toast-icon { color: var(--red); }
 </style>
 </head>
 <body>
@@ -557,6 +701,12 @@ select, .btn, input[type=text] {
         <input type="text" id="globalSearch" placeholder="Search incidents, tickets, buses…" oninput="handleGlobalSearch(this.value)">
       </div>
       <div class="topbar-right">
+        <div class="user-role-badge">
+          <select id="userRoleSelect" onchange="setUserRole(this.value)" class="role-select" title="Active Security Context / Operator Role">
+            <option value="DISPATCHER" selected>Role: Dispatcher</option>
+            <option value="VIEWER">Role: Viewer (Read-Only)</option>
+          </select>
+        </div>
         <div class="datasource" id="dsIndicator">
           <span class="dot pulse"></span> Connecting...
         </div>
@@ -577,6 +727,7 @@ select, .btn, input[type=text] {
   <div class="drawer-body" id="drawerBody"></div>
   <div class="drawer-foot" id="drawerFoot"></div>
 </aside>
+<div id="toastContainer" class="toast-container"></div>
 
 <script>
 /* =========================================================================
@@ -587,6 +738,88 @@ select, .btn, input[type=text] {
 /* ---------- Storage & Preferences ---------- */
 function getPref(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch(e) { return d; } }
 function setPref(k, v) { try { localStorage.setItem(k, v); } catch(e) {} }
+
+/* ---------- Security: Strict HTML Entity Sanitizer ---------- */
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/* ---------- Toast Notifications System ---------- */
+function showToast(title, desc, type = 'info', durationMs = 4200) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+
+  const icons = {
+    info: `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+    success: `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+    warning: `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    error: `<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`
+  };
+
+  toast.innerHTML = `
+    ${icons[type] || icons.info}
+    <div class="toast-content">
+      <div class="toast-title">${escapeHtml(title)}</div>
+      ${desc ? `<div class="toast-desc">${escapeHtml(desc)}</div>` : ''}
+    </div>
+  `;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('toast-hiding');
+    setTimeout(() => {
+      if (toast.parentElement) toast.parentElement.removeChild(toast);
+    }, 220);
+  }, durationMs);
+}
+
+/* ---------- Operator Role & Security Context ---------- */
+function setUserRole(role) {
+  state.currentUser.role = role;
+  showToast('Security Role Updated', `Active operator role is now ${role}`, 'info');
+  if (state.selectedTicketId && document.getElementById('drawer').classList.contains('open')) {
+    openTicketDrawer(state.selectedTicketId);
+  }
+  if (state.route === 'tickets') {
+    renderPage();
+  }
+}
+
+/* ---------- Authenticated API Fetch Interceptor ---------- */
+async function authFetch(url, options = {}) {
+  try {
+    const res = await fetch(url, options);
+    if (res.status === 401 || res.status === 403) {
+      showToast('Access Restricted', `HTTP ${res.status}: Action prohibited under current credentials.`, 'error');
+    }
+    return res;
+  } catch (err) {
+    showToast('Network Error', err.message || 'Failed to reach API server', 'error');
+    throw err;
+  }
+}
+
+/* ---------- Haversine Distance (Meters) ---------- */
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 /* ---------- Sidebar Toggle ---------- */
 function toggleSidebar() {
@@ -914,6 +1147,8 @@ function snapToRoad(lat, lon, preferredRouteId = null) {
 const state = {
   route: 'dashboard',
   selectedIncidentId: null,
+  selectedTicketId: null,
+  currentUser: { username: 'dispatcher_pune', role: 'DISPATCHER', department: 'PMC_ROAD_MAINTENANCE' },
   buses: [],
   incidents: [],
   tickets: [],
@@ -927,9 +1162,86 @@ const state = {
   },
   connected: false,
   searchTerm: '',
+  ticketFilters: { search: '', eventType: '', priority: '', sla: '' },
   mapCenter: [18.5228, 73.8420],
   mapZoom: 15,
+  driftLayers: [],
+  corridorsLoadedFromGeoJSON: false,
 };
+
+/* ---------- Dynamic Route Loading from RFC 7946 GeoJSON ---------- */
+async function loadCorridorsFromGeoJSON() {
+  try {
+    const res = await fetch('/api/v1/routes/geojson');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && Array.isArray(data.features)) {
+      data.features.forEach(feat => {
+        const props = feat.properties || {};
+        const geom = feat.geometry || {};
+        const routeId = props.route_id;
+        if (routeId && geom.type === 'LineString' && Array.isArray(geom.coordinates)) {
+          const latLngCoords = geom.coordinates.map(pt => [pt[1], pt[0]]);
+          if (latLngCoords.length > 1) {
+            PUNE_CORRIDORS_GEO[routeId] = {
+              name: props.name || routeId,
+              color: props.color || '#1C6E8C',
+              coords: latLngCoords
+            };
+          }
+        }
+      });
+      state.corridorsLoadedFromGeoJSON = true;
+    }
+  } catch (err) {
+    console.warn('Could not load routes/geojson, utilizing static corridor coordinates:', err);
+  }
+}
+
+/* ---------- Simulator Interactive Controls ---------- */
+let isSimulatorTriggering = false;
+async function triggerSimulatorScenario(scenario) {
+  if (isSimulatorTriggering) return;
+  isSimulatorTriggering = true;
+  document.querySelectorAll('.sim-btn').forEach(btn => btn.disabled = true);
+
+  const scenarioLabels = {
+    dual_bus: '2-Bus Corroboration (FC Road)',
+    offline_replay: 'Offline SQLite Burst Replay (JM Road)',
+    resolution: 'Repair Verification & Dual-HUD Audit',
+    seed: 'Reset / Seed Demonstration Dataset'
+  };
+
+  showToast('Simulator Active', `Executing scenario: ${scenarioLabels[scenario] || scenario}...`, 'info');
+
+  try {
+    const res = await authFetch('/api/v1/simulators/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenario })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      showToast('Scenario Completed', data.message || `${scenarioLabels[scenario] || scenario} executed successfully!`, 'success');
+      if (state.route === 'dashboard') {
+        updateDashboardKpis();
+        updateDashboardRecentTable();
+        updateMapMarkers();
+      } else {
+        renderPage();
+      }
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast('Simulator Error', err.detail || 'Simulator trigger failed', 'error');
+    }
+  } catch (err) {
+    showToast('Simulator Error', err.message || 'Failed to trigger simulator scenario', 'error');
+  } finally {
+    isSimulatorTriggering = false;
+    document.querySelectorAll('.sim-btn').forEach(btn => btn.disabled = false);
+  }
+}
 
 /* =========================================================================
    NAVIGATION (Authorities removed per requirements, Settings disconnected)
@@ -1111,7 +1423,15 @@ function mapMarkerColorHex(type) {
 function updateMapMarkers() {
   if (!leafletMap) return;
 
-  // 1. Update live bus markers
+  // Clear existing drift vector layers
+  if (state.driftLayers && state.driftLayers.length) {
+    state.driftLayers.forEach(layer => {
+      try { leafletMap.removeLayer(layer); } catch (e) {}
+    });
+    state.driftLayers = [];
+  }
+
+  // 1. Update live bus markers & GNSS drift vectors
   state.buses.forEach(bus => {
     const rawLat = bus.latitude || 18.5204;
     const rawLon = bus.longitude || 73.8436;
@@ -1119,13 +1439,36 @@ function updateMapMarkers() {
     const busRoute = isActualSim ? 'ROUTE-PUNE-FC' : (bus.route_id || null);
     const [snappedLat, snappedLon] = snapToRoad(rawLat, rawLon, busRoute);
 
+    // Compute GNSS satellite drift vector
+    const driftM = haversineMeters(rawLat, rawLon, snappedLat, snappedLon);
+    if (driftM > 4.5) {
+      const driftPoly = L.polyline([[rawLat, rawLon], [snappedLat, snappedLon]], {
+        color: '#E11D48',
+        weight: 2,
+        dashArray: '4, 4',
+        opacity: 0.85
+      }).addTo(leafletMap);
+
+      const rawDot = L.circleMarker([rawLat, rawLon], {
+        radius: 3.5,
+        color: '#E11D48',
+        fillColor: '#E11D48',
+        fillOpacity: 0.9,
+        weight: 1
+      }).bindTooltip(`🛰️ ${escapeHtml(bus.bus_id)} GNSS Drift: ${driftM.toFixed(1)}m`, {
+        direction: 'top'
+      }).addTo(leafletMap);
+
+      state.driftLayers.push(driftPoly, rawDot);
+    }
+
     const isOnline = bus.status === 'ONLINE' || bus.status === 'online';
     const heading = bus.heading_degrees || 0;
 
     const busIcon = L.divIcon({
       className: 'leaflet-bus-icon-wrap',
       html: `
-        <div class="leaflet-bus-marker ${isOnline ? 'online' : 'offline'}" title="${bus.bus_id} (${bus.speed_kmh || 0} km/h)">
+        <div class="leaflet-bus-marker ${isOnline ? 'online' : 'offline'}" title="${escapeHtml(bus.bus_id)} (${bus.speed_kmh || 0} km/h)">
           <div class="bus-pulse"></div>
           <div class="bus-core" style="transform: rotate(${heading}deg);">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" width="14" height="14">
@@ -1135,7 +1478,7 @@ function updateMapMarkers() {
               <circle cx="16" cy="18.5" r="1.5" fill="currentColor"/>
             </svg>
           </div>
-          <div class="bus-pill-tag">${bus.bus_id}</div>
+          <div class="bus-pill-tag">${escapeHtml(bus.bus_id)}</div>
         </div>
       `,
       iconSize: [44, 44],
@@ -1205,27 +1548,40 @@ function openDrawer(headHTML, bodyHTML, footHTML) {
 function closeDrawer() {
   document.getElementById('overlay').classList.remove('open');
   document.getElementById('drawer').classList.remove('open');
+  state.selectedIncidentId = null;
+  state.selectedTicketId = null;
 }
 document.getElementById('overlay').addEventListener('click', closeDrawer);
 
 function sevBadge(sev) {
   const s = (sev || 'MEDIUM').toUpperCase();
-  return `<span class="badge sev-${s.toLowerCase()}">${s}</span>`;
+  return `<span class="badge sev-${escapeHtml(s.toLowerCase())}">${escapeHtml(s)}</span>`;
 }
 function statusBadge(st) {
+  const raw = String(st || 'PENDING').toUpperCase();
   const map = {
-    VERIFIED: 'st-acknowledged', verified: 'st-acknowledged',
-    PENDING: 'st-reported', pending: 'st-reported',
-    REPORTED: 'st-reported', ACKNOWLEDGED: 'st-acknowledged',
-    IN_PROGRESS: 'st-inprogress', RESOLVED: 'st-resolved'
+    VERIFIED: 'st-acknowledged',
+    CANDIDATE: 'st-reported',
+    PENDING: 'st-reported',
+    RESOLUTION_CANDIDATE: 'st-inprogress',
+    REJECTED: 'sev-high',
+    REPORTED: 'st-reported',
+    ACKNOWLEDGED: 'st-acknowledged',
+    IN_PROGRESS: 'st-inprogress',
+    RESOLVED: 'st-resolved'
   };
   const labelMap = {
-    VERIFIED: 'Verified', verified: 'Verified',
-    PENDING: 'Pending Fusion', pending: 'Pending Fusion',
-    REPORTED: 'Reported', ACKNOWLEDGED: 'Acknowledged',
-    IN_PROGRESS: 'In Progress', RESOLVED: 'Resolved'
+    VERIFIED: 'Verified',
+    CANDIDATE: 'Candidate',
+    PENDING: 'Pending Fusion',
+    RESOLUTION_CANDIDATE: 'Resolution Candidate',
+    REJECTED: 'Rejected',
+    REPORTED: 'Reported',
+    ACKNOWLEDGED: 'Acknowledged',
+    IN_PROGRESS: 'In Progress',
+    RESOLVED: 'Resolved'
   };
-  return `<span class="badge ${map[st] || 'type'}">${labelMap[st] || st}</span>`;
+  return `<span class="badge ${map[raw] || 'type'}">${escapeHtml(labelMap[raw] || raw)}</span>`;
 }
 function fmtTime(iso) {
   if (!iso) return 'Just now';
@@ -1258,16 +1614,16 @@ function evidenceSVG(type, w = 260, h = 150) {
     shape = `<circle cx="130" cy="90" r="26" fill="#E7C36B"/>
       <circle cx="130" cy="78" r="9" fill="#3A2A10"/>
       <rect x="120" y="88" width="20" height="26" rx="6" fill="#3A2A10"/>`;
-  }
+  const safeId = 'g_' + String(type || 'POTHOLE').replace(/[^a-zA-Z0-9]/g, '_');
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-    <defs><linearGradient id="g${type}" x1="0" y1="0" x2="0" y2="1">
+    <defs><linearGradient id="${safeId}" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="${bg}" stop-opacity="0.9"/><stop offset="1" stop-color="#2B2E33"/>
     </linearGradient></defs>
-    <rect width="${w}" height="${h}" fill="url(#g${type})"/>
+    <rect width="${w}" height="${h}" fill="url(#${safeId})"/>
     ${shape}
     <rect x="70" y="55" width="120" height="70" fill="none" stroke="#7CE38B" stroke-width="1.6" stroke-dasharray="5 4" rx="4"/>
     <rect x="70" y="41" width="118" height="14" rx="3" fill="#111820" opacity=".8"/>
-    <text x="76" y="51" font-family="JetBrains Mono, monospace" font-size="9" fill="#7CE38B">EDGE AI DETECT · ${type}</text>
+    <text x="76" y="51" font-family="JetBrains Mono, monospace" font-size="9" fill="#7CE38B">EDGE AI DETECT · ${escapeHtml(type)}</text>
   </svg>`;
 }
 
@@ -1333,11 +1689,11 @@ function openIncidentDrawer(id) {
   const head = `
     <div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <span class="badge type">${type.replace('_', ' ')}</span>
-        ${statusBadge(inc.status || 'PENDING')}
+        <span class="badge type">${escapeHtml(type.replace('_', ' '))}</span>
+        ${statusBadge(inc.status || 'CANDIDATE')}
       </div>
-      <h3 style="font-family:var(--font-display);font-size:16.5px;margin-top:8px;">${inc.incident_id}</h3>
-      <div class="mono" style="margin-top:2px;">FC Road Corridor, Pune</div>
+      <h3 style="font-family:var(--font-display);font-size:16.5px;margin-top:8px;">${escapeHtml(inc.incident_id)}</h3>
+      <div class="mono" style="margin-top:2px;">${escapeHtml(inc.locality || 'Pune Transit Corridor')}</div>
     </div>
     <button class="iconbtn x" onclick="closeDrawer()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -1348,7 +1704,7 @@ function openIncidentDrawer(id) {
 
     <div class="section-title">Corroborating Fleet Buses</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      ${buses.map(b => `<span class="badge type mono">${b}</span>`).join('')}
+      ${buses.map(b => `<span class="badge type mono">${escapeHtml(b)}</span>`).join('')}
     </div>
 
     <div class="section-title">Telemetry Detail</div>
@@ -1357,11 +1713,11 @@ function openIncidentDrawer(id) {
       <dt>Severity</dt><dd>${sevBadge(inc.severity)}</dd>
       <dt>Road Alignment</dt><dd class="mono">${snappedLat}°, ${snappedLon}°</dd>
       <dt>First Detected</dt><dd>${fmtTime(inc.first_observed_at || inc.created_at || inc.timestamp)}</dd>
-      <dt>Linked Ticket</dt><dd>${inc.ticket_id ? `<span class="mono">${inc.ticket_id}</span>` : '<span style="color:var(--ink-faint)">Awaiting auto-dispatch</span>'}</dd>
+      <dt>Linked Ticket</dt><dd>${inc.ticket_id ? `<span class="mono">${escapeHtml(inc.ticket_id)}</span>` : '<span style="color:var(--ink-faint)">Awaiting auto-dispatch</span>'}</dd>
     </dl>
 
     ${ticket ? `
-      <div class="section-title">Ticket Lifecycle (${ticket.ticket_id})</div>
+      <div class="section-title">Ticket Lifecycle (${escapeHtml(ticket.ticket_id)})</div>
       ${renderStepperHTML(ticket)}
     ` : ''}
   `;
@@ -1372,8 +1728,8 @@ function openIncidentDrawer(id) {
       Open in Google Maps
     </a>
     ${ticket
-      ? `<button class="btn primary sm" onclick="openTicketDrawer('${ticket.ticket_id}')">View Ticket</button>`
-      : `<button class="btn primary sm" onclick="raiseTicketForIncident('${inc.incident_id}')">Raise Ticket</button>`}
+      ? `<button class="btn primary sm" onclick="openTicketDrawer('${escapeHtml(ticket.ticket_id)}')">View Ticket</button>`
+      : `<button class="btn primary sm" onclick="raiseTicketForIncident('${escapeHtml(inc.incident_id)}')">Raise Ticket</button>`}
   `;
 
   openDrawer(head, body, foot);
@@ -1409,30 +1765,63 @@ function renderStepperHTML(ticket) {
 function openTicketDrawer(ticketId) {
   const t = state.tickets.find(x => x.ticket_id === ticketId);
   if (!t) return;
+  state.selectedTicketId = ticketId;
   const inc = state.incidents.find(i => i.incident_id === t.incident_id);
   const incRoute = (inc && inc.route_id) ? inc.route_id : 'ROUTE-PUNE-FC';
   const [lat, lon] = snapToRoad(t.latitude || (inc ? inc.latitude : 18.5204), t.longitude || (inc ? inc.longitude : 73.8436), incRoute);
 
+  const isResolved = (t.status || '').toUpperCase() === 'RESOLVED';
+  const beforeImg = t.evidence_image ? (t.evidence_image.startsWith('/') ? t.evidence_image : '/' + t.evidence_image) : `/runtime/evidence/${escapeHtml(inc ? (inc.event_id || 'EVT-000001') : 'EVT-000001')}.jpg`;
+  const afterImg = t.resolution_evidence_image || '/runtime/evidence/EVT-000004.jpg';
+
   const head = `
     <div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <span class="badge type">${(t.event_type || 'POTHOLE').replace('_', ' ')}</span>
+        <span class="badge type">${escapeHtml((t.event_type || 'POTHOLE').replace('_', ' '))}</span>
         ${statusBadge(t.status || 'REPORTED')}
       </div>
-      <h3 style="font-family:var(--font-display);font-size:16.5px;margin-top:8px;">${t.ticket_id}</h3>
-      <div class="mono" style="margin-top:2px;">FC Road Corridor, Pune</div>
+      <h3 style="font-family:var(--font-display);font-size:16.5px;margin-top:8px;">${escapeHtml(t.ticket_id)}</h3>
+      <div class="mono" style="margin-top:2px;">${escapeHtml(t.locality || (inc && inc.locality) || 'Pune Transit Corridor')}</div>
     </div>
     <button class="iconbtn x" onclick="closeDrawer()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>`;
 
   const body = `
+    ${isResolved ? `
+      <div class="section-title">Resolution Audit & Verification</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--red);margin-bottom:4px;letter-spacing:.02em;">BEFORE (DEFECT DETECTED)</div>
+          <div class="evidence-container" style="aspect-ratio:4/3;">
+            <img class="evidence-img" src="${escapeHtml(beforeImg)}"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='block';" alt="Before Repair Snapshot" />
+            <div class="evidence-fallback" style="display:none;width:100%;height:100%;">
+              ${evidenceSVG(t.event_type || 'POTHOLE')}
+            </div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--green);margin-bottom:4px;letter-spacing:.02em;">AFTER (REPAIR VERIFIED)</div>
+          <div class="evidence-container" style="aspect-ratio:4/3;">
+            <img class="evidence-img" src="${escapeHtml(afterImg)}"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='block';" alt="After Repair Snapshot" />
+            <div class="evidence-fallback" style="display:none;width:100%;height:100%;">
+              <div style="background:#1C2630;width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#10b981;font-size:11px;font-family:var(--font-mono);text-align:center;padding:8px;">
+                ✓ VERIFIED SMOOTH ASPHALT
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    ` : ''}
+
     <dl class="kv">
-      <dt>Incident ID</dt><dd class="mono">${t.incident_id || 'INC-000001'}</dd>
-      <dt>Workorder ID</dt><dd class="mono">${t.workorder_id || ('WO-' + new Date().getFullYear() + '-000001')}</dd>
+      <dt>Incident ID</dt><dd class="mono">${escapeHtml(t.incident_id || 'INC-000001')}</dd>
+      <dt>Workorder ID</dt><dd class="mono">${escapeHtml(t.workorder_id || ('WO-' + new Date().getFullYear() + '-000001'))}</dd>
       <dt>Authority</dt><dd>Pune Municipal Corporation (Road Dept)</dd>
       <dt>Priority</dt><dd>${sevBadge(t.priority || (inc ? inc.severity : 'HIGH'))}</dd>
-      <dt>Repair SLA</dt><dd class="mono">${t.estimated_repair_sla_hours || 48}h</dd>
+      <dt>Repair SLA</dt><dd class="mono">${escapeHtml(String(t.estimated_repair_sla_hours || 48))}h</dd>
       <dt>Created</dt><dd>${fmtTime(t.created_at)}</dd>
       <dt>Coordinates</dt><dd class="mono">${lat}°, ${lon}°</dd>
     </dl>
@@ -1443,11 +1832,14 @@ function openTicketDrawer(ticketId) {
   const order = ['REPORTED', 'ACKNOWLEDGED', 'IN_PROGRESS', 'RESOLVED'];
   const curIdx = order.indexOf(t.status || 'REPORTED');
   const nextStage = curIdx < order.length - 1 ? order[curIdx + 1] : null;
+  const canMutate = state.currentUser && (state.currentUser.role === 'DISPATCHER' || state.currentUser.role === 'ADMIN');
 
   const foot = `
     <a class="btn ghost sm" href="${gmapsLink(lat, lon)}" target="_blank" rel="noopener">Google Maps</a>
-    <button class="btn primary sm" ${!nextStage ? 'disabled' : ''} onclick="advanceTicketStatus('${t.ticket_id}', '${nextStage}')">
-      ${nextStage ? 'Mark ' + nextStage.replace('_', ' ') : 'Lifecycle Complete'}
+    <button class="btn primary sm" ${(!nextStage || !canMutate) ? 'disabled' : ''}
+            title="${!canMutate ? 'Action requires Dispatcher or Admin role' : ''}"
+            onclick="advanceTicketStatus('${escapeHtml(t.ticket_id)}', '${nextStage || ''}')">
+      ${!canMutate ? 'Read-Only (Viewer)' : (nextStage ? 'Mark ' + nextStage.replace('_', ' ') : 'Lifecycle Complete')}
     </button>
   `;
 
@@ -1467,8 +1859,8 @@ function openBusDrawer(busId) {
         <span class="dot" style="background:${isOnline ? 'var(--green)' : 'var(--ink-faint)'}"></span>
         ${isOnline ? 'Online' : 'Offline'}
       </span>
-      <h3 style="font-family:var(--font-display);font-size:16.5px;margin-top:8px;" class="mono">${b.bus_id}</h3>
-      <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${b.route_name || 'FC Road Corridor (ROUTE-PUNE-FC)'}</div>
+      <h3 style="font-family:var(--font-display);font-size:16.5px;margin-top:8px;" class="mono">${escapeHtml(b.bus_id)}</h3>
+      <div style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">${escapeHtml(b.route_name || 'FC Road Corridor (ROUTE-PUNE-FC)')}</div>
     </div>
     <button class="iconbtn x" onclick="closeDrawer()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -1477,22 +1869,22 @@ function openBusDrawer(busId) {
   const body = `
     <dl class="kv">
       <dt>Edge AI</dt><dd>YOLO + ByteTrack</dd>
-      <dt>Speed</dt><dd class="mono">${b.speed_kmh ? b.speed_kmh.toFixed(1) + ' km/h' : '36.0 km/h'}</dd>
-      <dt>Heading</dt><dd class="mono">${b.heading_degrees ? b.heading_degrees.toFixed(0) + '°' : 'N/A'}</dd>
-      <dt>Battery</dt><dd>${b.battery || 88}%</dd>
-      <dt>Session</dt><dd>${b.uptime || 'Live'}</dd>
-      <dt>Last Event</dt><dd class="mono">${b.last_event || 'EVT-010001'}</dd>
+      <dt>Speed</dt><dd class="mono">${b.speed_kmh ? escapeHtml(b.speed_kmh.toFixed(1)) + ' km/h' : '36.0 km/h'}</dd>
+      <dt>Heading</dt><dd class="mono">${b.heading_degrees ? escapeHtml(b.heading_degrees.toFixed(0)) + '°' : 'N/A'}</dd>
+      <dt>Battery</dt><dd>${escapeHtml(String(b.battery || 88))}%</dd>
+      <dt>Session</dt><dd>${escapeHtml(b.uptime || 'Live')}</dd>
+      <dt>Last Event</dt><dd class="mono">${escapeHtml(b.last_event || 'EVT-010001')}</dd>
       <dt>Uplink</dt><dd>HTTP Ingest + MQTT Broker</dd>
     </dl>
     <div class="section-title">Contributed Defect Observations (${relatedIncidents.length})</div>
     ${relatedIncidents.length ? relatedIncidents.map(i => `
-      <div class="obs-row" style="cursor:pointer;" onclick="openIncidentDrawer('${i.incident_id}')">
-        <div class="busdot">${(i.event_type || i.type || 'POT').slice(0, 3)}</div>
+      <div class="obs-row" style="cursor:pointer;" onclick="openIncidentDrawer('${escapeHtml(i.incident_id)}')">
+        <div class="busdot">${escapeHtml((i.event_type || i.type || 'POT').slice(0, 3))}</div>
         <div style="flex:1;">
-          <div style="font-size:12.5px;font-weight:600;">${i.incident_id} · ${(i.event_type || i.type || 'POTHOLE').replace('_', ' ')}</div>
-          <div style="font-size:11px;color:var(--ink-faint);">FC Road Corridor</div>
+          <div style="font-size:12.5px;font-weight:600;">${escapeHtml(i.incident_id)} · ${escapeHtml((i.event_type || i.type || 'POTHOLE').replace('_', ' '))}</div>
+          <div style="font-size:11px;color:var(--ink-faint);">${escapeHtml(i.locality || 'FC Road Corridor')}</div>
         </div>
-        ${statusBadge(i.status || 'PENDING')}
+        ${statusBadge(i.status || 'CANDIDATE')}
       </div>`).join('') : `<div class="empty">No incidents detected yet on this run.</div>`}
   `;
 
@@ -1503,7 +1895,7 @@ function openBusDrawer(busId) {
 async function advanceTicketStatus(ticketId, nextStage) {
   if (!nextStage) return;
   try {
-    const res = await fetch(`/api/v1/tickets/${ticketId}/status?new_status=${nextStage}`, {
+    const res = await authFetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/status?new_status=${encodeURIComponent(nextStage)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' }
     });
@@ -1513,7 +1905,11 @@ async function advanceTicketStatus(ticketId, nextStage) {
       const idx = state.tickets.findIndex(t => t.ticket_id === ticketId);
       if (idx !== -1) state.tickets[idx] = updated;
       openTicketDrawer(ticketId);
+      showToast('Ticket Updated', `Ticket ${ticketId} advanced to ${nextStage}`, 'success');
       if (state.route === 'tickets') renderPage();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast('Update Failed', err.detail || 'Failed to update ticket status', 'error');
     }
   } catch (err) {
     console.error('Failed to advance ticket status:', err);
@@ -1524,6 +1920,7 @@ async function raiseTicketForIncident(incidentId) {
   const inc = state.incidents.find(i => i.incident_id === incidentId);
   if (!inc) return;
 
+  const now = new Date().toISOString();
   const ticketPayload = {
     ticket_id: `POT-${new Date().getFullYear()}-${incidentId.split('-').pop() || '000001'}`,
     incident_id: incidentId,
@@ -1536,10 +1933,12 @@ async function raiseTicketForIncident(incidentId) {
     google_maps_url: gmapsLink(inc.latitude || 18.5204, inc.longitude || 73.8436),
     estimated_repair_sla_hours: 48,
     status: 'REPORTED',
+    created_at: now,
+    updated_at: now
   };
 
   try {
-    const res = await fetch('/api/v1/tickets', {
+    const res = await authFetch('/api/v1/tickets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ticketPayload)
@@ -1548,9 +1947,13 @@ async function raiseTicketForIncident(incidentId) {
       const data = await res.json();
       state.tickets.push(data.ticket);
       inc.ticket_id = data.ticket.ticket_id;
+      showToast('Ticket Dispatched', `Civic workorder ${data.ticket.ticket_id} created for ${incidentId}`, 'success');
       openIncidentDrawer(incidentId);
       if (state.route === 'tickets') renderPage();
       else if (state.route === 'dashboard') updateDashboardKpis();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      showToast('Dispatch Error', err.detail || 'Failed to raise ticket', 'error');
     }
   } catch (err) {
     console.error('Failed to raise ticket:', err);
@@ -1588,6 +1991,36 @@ function pageDashboard() {
       <div class="label">Fleet Online</div>
       <div class="value" id="kpiOnlineBuses">${onlineBuses}/${fleetTotal}</div>
       <div class="delta up">Edge AI streaming live</div>
+    </div>
+  </div>
+
+  <div class="sim-toolbar">
+    <div class="sim-toolbar-left">
+      <div class="sim-toolbar-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        Scenario Control & Simulation Engine
+      </div>
+      <span class="sim-toolbar-badge">Hardware & Demo Simulators</span>
+    </div>
+    <div class="sim-toolbar-actions">
+      <button class="sim-btn primary" onclick="triggerSimulatorScenario('dual_bus')" title="Trigger BUS-001 & BUS-002 corroboration on FC Road">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+        2-Bus Corroboration
+      </button>
+      <button class="sim-btn" onclick="triggerSimulatorScenario('offline_replay')" title="Trigger BUS-003 offline WAL replay on JM Road">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Offline Burst Replay
+      </button>
+      <button class="sim-btn" onclick="triggerSimulatorScenario('resolution')" title="Simulate municipal asphalt repair and trigger dual-view verification HUD">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
+        Repair Verification
+      </button>
+      <button class="sim-btn" onclick="triggerSimulatorScenario('seed')" title="Reset simulation memory to clean demo state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
+        Reset / Seed
+      </button>
     </div>
   </div>
 
@@ -1670,14 +2103,14 @@ function incidentsTable(list) {
         const type = i.event_type || i.type || 'POTHOLE';
         const buses = i.buses || (i.bus_id ? [i.bus_id] : ['BUS-001']);
         return `
-        <tr onclick="openIncidentDrawer('${i.incident_id}')">
-          <td class="mono">${i.incident_id}</td>
-          <td><span class="badge type">${type.replace('_', ' ')}</span></td>
-          <td>FC Road Corridor, Pune</td>
+        <tr onclick="openIncidentDrawer('${escapeHtml(i.incident_id)}')">
+          <td class="mono">${escapeHtml(i.incident_id)}</td>
+          <td><span class="badge type">${escapeHtml(type.replace('_', ' '))}</span></td>
+          <td>${escapeHtml(i.locality || 'FC Road Corridor, Pune')}</td>
           <td>${sevBadge(i.severity)}</td>
           <td>${Math.round((i.confidence || 0.9) * 100)}%</td>
           <td class="mono">${buses.length}</td>
-          <td>${statusBadge(i.status || 'PENDING')}</td>
+          <td>${statusBadge(i.status || 'CANDIDATE')}</td>
           <td>${fmtTime(i.first_observed_at || i.created_at || i.timestamp)}</td>
         </tr>`;
       }).join('')}
@@ -1704,7 +2137,10 @@ function pageIncidents() {
     <select id="fStatus" onchange="applyIncidentFilters()">
       <option value="">All statuses</option>
       <option value="VERIFIED">Verified</option>
-      <option value="PENDING">Pending Fusion</option>
+      <option value="CANDIDATE">Candidate</option>
+      <option value="RESOLUTION_CANDIDATE">Resolution Candidate</option>
+      <option value="RESOLVED">Resolved</option>
+      <option value="REJECTED">Rejected</option>
     </select>
     <button class="btn ghost sm" onclick="state.route='incidents';render()">Reset</button>
   </div>
@@ -1720,16 +2156,19 @@ function pageIncidents() {
 }
 
 function applyIncidentFilters() {
-  const type = document.getElementById('fType').value;
-  const sev = document.getElementById('fSev').value;
-  const st = document.getElementById('fStatus').value;
+  const type = (document.getElementById('fType') || {}).value || '';
+  const sev = (document.getElementById('fSev') || {}).value || '';
+  const st = (document.getElementById('fStatus') || {}).value || '';
   const filtered = state.incidents.filter(i => {
-    const iType = i.event_type || i.type || 'POTHOLE';
+    const iType = (i.event_type || i.type || 'POTHOLE').toUpperCase();
     const iSev = (i.severity || 'MEDIUM').toUpperCase();
-    const iSt = (i.status || 'PENDING').toUpperCase();
-    return (!type || iType === type) && (!sev || iSev === sev) && (!st || iSt === st);
+    const iSt = (i.status || 'CANDIDATE').toUpperCase();
+    return (!type || iType === type.toUpperCase()) &&
+           (!sev || iSev === sev.toUpperCase()) &&
+           (!st || iSt === st.toUpperCase());
   });
-  document.getElementById('incidentsTableWrap').innerHTML = incidentsTable(filtered);
+  const wrap = document.getElementById('incidentsTableWrap');
+  if (wrap) wrap.innerHTML = incidentsTable(filtered);
 }
 
 function pageBuses() {
@@ -1740,11 +2179,11 @@ function pageBuses() {
     ${state.buses.map(b => {
       const isOnline = b.status === 'ONLINE' || b.status === 'online';
       return `
-      <div class="bus-card" style="cursor:pointer;" onclick="openBusDrawer('${b.bus_id}')">
+      <div class="bus-card" style="cursor:pointer;" onclick="openBusDrawer('${escapeHtml(b.bus_id)}')">
         <div class="top">
           <div>
-            <div class="id">${b.bus_id}</div>
-            <div class="route">${b.route_name || 'FC Road Corridor (ROUTE-PUNE-FC)'}</div>
+            <div class="id">${escapeHtml(b.bus_id)}</div>
+            <div class="route">${escapeHtml(b.route_name || 'FC Road Corridor (ROUTE-PUNE-FC)')}</div>
           </div>
           <span class="status-pill ${isOnline ? 'online' : 'offline'}">
             <span class="dot" style="background:${isOnline ? 'var(--green)' : 'var(--ink-faint)'}"></span>
@@ -1752,9 +2191,9 @@ function pageBuses() {
           </span>
         </div>
         <div class="bus-meta">
-          <div><span>Speed</span>${b.speed_kmh ? b.speed_kmh.toFixed(1) + ' km/h' : '36 km/h'}</div>
-          <div><span>Heading</span>${b.heading_degrees ? b.heading_degrees.toFixed(0) + '°' : '0°'}</div>
-          <div><span>Last Event</span><span class="mono">${b.last_event || 'EVT-010001'}</span></div>
+          <div><span>Speed</span>${b.speed_kmh ? escapeHtml(b.speed_kmh.toFixed(1)) + ' km/h' : '36.0 km/h'}</div>
+          <div><span>Heading</span>${b.heading_degrees ? escapeHtml(b.heading_degrees.toFixed(0)) + '°' : '0°'}</div>
+          <div><span>Last Event</span><span class="mono">${escapeHtml(b.last_event || 'EVT-010001')}</span></div>
         </div>
       </div>`;
     }).join('')}
@@ -1762,8 +2201,8 @@ function pageBuses() {
 }
 
 function pageFusion() {
-  const pending = state.incidents.filter(i => i.status !== 'VERIFIED' && i.status !== 'verified');
-  const verified = state.incidents.filter(i => i.status === 'VERIFIED' || i.status === 'verified');
+  const pending = state.incidents.filter(i => (i.status || 'CANDIDATE') !== 'VERIFIED' && (i.status || 'CANDIDATE') !== 'RESOLVED');
+  const verified = state.incidents.filter(i => (i.status || '').toUpperCase() === 'VERIFIED' || (i.status || '').toUpperCase() === 'RESOLVED');
 
   return `
   <div class="panel">
@@ -1778,19 +2217,19 @@ function pageFusion() {
         return `
         <div class="fusion-card">
           <div class="fusion-head">
-            <span class="badge type">${type.replace('_', ' ')}</span>
-            <span style="font-size:12.5px;font-weight:600;">FC Road Corridor, Pune</span>
-            <span class="mono" style="margin-left:auto;font-size:11px;color:var(--ink-faint);">${inc.incident_id}</span>
+            <span class="badge type">${escapeHtml(type.replace('_', ' '))}</span>
+            <span style="font-size:12.5px;font-weight:600;">${escapeHtml(inc.locality || 'FC Road Corridor, Pune')}</span>
+            <span class="mono" style="margin-left:auto;font-size:11px;color:var(--ink-faint);">${escapeHtml(inc.incident_id)}</span>
           </div>
           ${buses.map(b => `
             <div class="obs-row">
-              <div class="busdot">${b.slice(-3)}</div>
-              <div style="flex:1;font-size:12px;">${b} <span class="mono" style="color:var(--ink-faint);">· Single Bus Observation</span></div>
+              <div class="busdot">${escapeHtml(b.slice(-3))}</div>
+              <div style="flex:1;font-size:12px;">${escapeHtml(b)} <span class="mono" style="color:var(--ink-faint);">· Single Bus Observation</span></div>
               <div style="font-size:11.5px;color:var(--ink-soft);">${Math.round((inc.confidence || 0.85) * 100)}%</div>
               <div style="font-size:11px;color:var(--ink-faint);">${fmtTime(inc.first_observed_at || inc.created_at)}</div>
             </div>`).join('')}
           <div style="margin-top:10px;font-size:11.5px;color:var(--ink-faint);">
-            Awaiting second bus (BUS-002) cross-observation on FC Road to elevate confidence and auto-issue civic ticket.
+            Awaiting secondary corroboration on corridor to elevate confidence and auto-dispatch municipal workorder.
           </div>
         </div>`;
       }).join('') : `<div class="empty">No uncorroborated single-bus clusters in the fusion queue.</div>`}
@@ -1810,18 +2249,47 @@ function pageFusion() {
 
 let draggedTicketId = null;
 
-function pageTickets() {
+function updateTicketFilter(key, val) {
+  state.ticketFilters[key] = (val || '').trim();
+  const wrap = document.getElementById('kanbanBoardWrap');
+  if (wrap) wrap.innerHTML = renderKanbanColumnsHTML();
+}
+
+function resetTicketFilters() {
+  state.ticketFilters = { search: '', eventType: '', priority: '', sla: '' };
+  if (document.getElementById('tktFilterSearch')) document.getElementById('tktFilterSearch').value = '';
+  if (document.getElementById('tktFilterType')) document.getElementById('tktFilterType').value = '';
+  if (document.getElementById('tktFilterSev')) document.getElementById('tktFilterSev').value = '';
+  if (document.getElementById('tktFilterSLA')) document.getElementById('tktFilterSLA').value = '';
+  const wrap = document.getElementById('kanbanBoardWrap');
+  if (wrap) wrap.innerHTML = renderKanbanColumnsHTML();
+}
+
+function getFilteredTickets() {
+  const tf = state.ticketFilters;
+  return (state.tickets || []).filter(t => {
+    const q = (tf.search || '').toLowerCase();
+    const matchSearch = !q ||
+      (t.ticket_id && t.ticket_id.toLowerCase().includes(q)) ||
+      (t.locality && t.locality.toLowerCase().includes(q)) ||
+      (t.workorder_id && t.workorder_id.toLowerCase().includes(q));
+    const matchType = !tf.eventType || (t.event_type || 'POTHOLE').toUpperCase() === tf.eventType.toUpperCase();
+    const matchPri = !tf.priority || (t.priority || 'HIGH').toUpperCase() === tf.priority.toUpperCase();
+    const matchSla = !tf.sla || (tf.sla === 'URGENT' && (t.estimated_repair_sla_hours || 48) <= 24);
+    return matchSearch && matchType && matchPri && matchSla;
+  });
+}
+
+function renderKanbanColumnsHTML() {
   const cols = ['REPORTED', 'ACKNOWLEDGED', 'IN_PROGRESS', 'RESOLVED'];
   const labels = { REPORTED: 'Reported', ACKNOWLEDGED: 'Acknowledged', IN_PROGRESS: 'In Progress', RESOLVED: 'Resolved' };
+  const canMutate = state.currentUser && (state.currentUser.role === 'DISPATCHER' || state.currentUser.role === 'ADMIN');
+  const filteredTickets = getFilteredTickets();
 
   return `
-  <div style="margin-bottom:12px;font-size:12px;color:var(--ink-soft);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-    <div><strong>Drag and drop</strong> ticket cards or use the stage selector to update municipal ticket resolution progress in real time.</div>
-    <div style="font-size:11px;color:var(--ink-faint);">${state.tickets.length} total municipal tickets</div>
-  </div>
   <div class="kanban" id="kanbanBoard">
     ${cols.map(c => {
-      const items = state.tickets.filter(t => (t.status || 'REPORTED') === c);
+      const items = filteredTickets.filter(t => (t.status || 'REPORTED') === c);
       return `
       <div class="kcol-column">
         <div class="kcol-head">
@@ -1829,41 +2297,76 @@ function pageTickets() {
           <span class="n">${items.length}</span>
         </div>
         <div class="kcol-body" data-col="${c}"
-             ondragover="handleTicketDragOver(event)"
-             ondragenter="handleTicketDragOver(event)"
-             ondragleave="handleTicketDragLeave(event)"
-             ondrop="handleTicketDrop(event, '${c}')">
+             ondragover="${canMutate ? 'handleTicketDragOver(event)' : ''}"
+             ondragenter="${canMutate ? 'handleTicketDragOver(event)' : ''}"
+             ondragleave="${canMutate ? 'handleTicketDragLeave(event)' : ''}"
+             ondrop="${canMutate ? `handleTicketDrop(event, '${c}')` : ''}">
           ${items.length ? items.map(t => {
             const inc = state.incidents.find(i => i.incident_id === t.incident_id);
             return `
-            <div class="tcard" draggable="true" id="tcard-${t.ticket_id}"
-                 ondragstart="handleTicketDragStart(event, '${t.ticket_id}')"
-                 ondragend="handleTicketDragEnd(event)"
-                 onclick="handleTicketCardClick(event, '${t.ticket_id}')">
+            <div class="tcard ${!canMutate ? 'readonly' : ''}" draggable="${canMutate ? 'true' : 'false'}" id="tcard-${escapeHtml(t.ticket_id)}"
+                 ondragstart="${canMutate ? `handleTicketDragStart(event, '${escapeHtml(t.ticket_id)}')` : ''}"
+                 ondragend="${canMutate ? 'handleTicketDragEnd(event)' : ''}"
+                 onclick="handleTicketCardClick(event, '${escapeHtml(t.ticket_id)}')">
               <div style="display:flex;align-items:center;justify-content:space-between;">
                 <div class="tid" style="display:flex;align-items:center;">
-                  <span class="tcard-drag-handle" title="Drag ticket card">⋮⋮</span>
-                  ${t.ticket_id}
+                  ${canMutate ? `<span class="tcard-drag-handle" title="Drag ticket card">⋮⋮</span>` : ''}
+                  ${escapeHtml(t.ticket_id)}
                 </div>
                 ${statusBadge(t.status || c)}
               </div>
-              <div class="ttype">${(t.event_type || 'POTHOLE').replace('_', ' ')}</div>
-              <div class="tloc">${t.locality || 'Pune Municipal Corporation'}</div>
+              <div class="ttype">${escapeHtml((t.event_type || 'POTHOLE').replace('_', ' '))}</div>
+              <div class="tloc">${escapeHtml(t.locality || 'Pune Municipal Corporation')}</div>
               <div class="tfoot">
                 ${sevBadge(t.priority || (inc ? inc.severity : 'HIGH'))}
-                <span class="sla">${t.estimated_repair_sla_hours || 48}h SLA</span>
+                <span class="sla">${escapeHtml(String(t.estimated_repair_sla_hours || 48))}h SLA</span>
               </div>
               <div class="tcard-actions" onclick="event.stopPropagation();">
                 <span style="font-size:10px;color:var(--ink-faint);">Stage:</span>
-                <select class="tcard-move-select" onchange="moveTicketToStatus('${t.ticket_id}', this.value)">
+                <select class="tcard-move-select" ${!canMutate ? 'disabled title="Requires Dispatcher role"' : ''}
+                        onchange="moveTicketToStatus('${escapeHtml(t.ticket_id)}', this.value)">
                   ${cols.map(opt => `<option value="${opt}" ${opt === (t.status || c) ? 'selected' : ''}>${labels[opt]}</option>`).join('')}
                 </select>
               </div>
             </div>`;
-          }).join('') : `<div class="empty" style="padding:24px 6px;">Drop tickets here</div>`}
+          }).join('') : `<div class="empty" style="padding:24px 6px;">${canMutate ? 'Drop tickets here' : 'No tickets in column'}</div>`}
         </div>
       </div>`;
     }).join('')}
+  </div>`;
+}
+
+function pageTickets() {
+  const canMutate = state.currentUser && (state.currentUser.role === 'DISPATCHER' || state.currentUser.role === 'ADMIN');
+  return `
+  <div class="filters" style="align-items:center;margin-bottom:12px;">
+    <input type="text" id="tktFilterSearch" placeholder="Search ticket or workorder ID…"
+           value="${escapeHtml(state.ticketFilters.search)}"
+           oninput="updateTicketFilter('search', this.value)" style="min-width:200px;">
+    <select id="tktFilterType" onchange="updateTicketFilter('eventType', this.value)">
+      <option value="">All Defect Types</option>
+      <option value="POTHOLE" ${state.ticketFilters.eventType === 'POTHOLE' ? 'selected' : ''}>Pothole</option>
+      <option value="GARBAGE" ${state.ticketFilters.eventType === 'GARBAGE' ? 'selected' : ''}>Garbage</option>
+      <option value="TRAFFIC_OBSTRUCTION" ${state.ticketFilters.eventType === 'TRAFFIC_OBSTRUCTION' ? 'selected' : ''}>Traffic Obstruction</option>
+      <option value="PEDESTRIAN_RISK" ${state.ticketFilters.eventType === 'PEDESTRIAN_RISK' ? 'selected' : ''}>Pedestrian Risk</option>
+    </select>
+    <select id="tktFilterSev" onchange="updateTicketFilter('priority', this.value)">
+      <option value="">All Priorities</option>
+      <option value="HIGH" ${state.ticketFilters.priority === 'HIGH' ? 'selected' : ''}>High</option>
+      <option value="MEDIUM" ${state.ticketFilters.priority === 'MEDIUM' ? 'selected' : ''}>Medium</option>
+      <option value="LOW" ${state.ticketFilters.priority === 'LOW' ? 'selected' : ''}>Low</option>
+    </select>
+    <select id="tktFilterSLA" onchange="updateTicketFilter('sla', this.value)">
+      <option value="">All SLAs</option>
+      <option value="URGENT" ${state.ticketFilters.sla === 'URGENT' ? 'selected' : ''}>Urgent (≤ 24h)</option>
+    </select>
+    <button class="btn ghost sm" onclick="resetTicketFilters()">Reset Filters</button>
+    <div style="margin-left:auto;font-size:11px;color:var(--ink-faint);">
+      ${canMutate ? '💡 Drag tickets between columns to update stage.' : '🔒 Read-only view (Viewer mode).'}
+    </div>
+  </div>
+  <div id="kanbanBoardWrap">
+    ${renderKanbanColumnsHTML()}
   </div>`;
 }
 
@@ -1917,6 +2420,12 @@ function handleTicketCardClick(event, ticketId) {
 }
 
 async function moveTicketToStatus(ticketId, targetStatus) {
+  const canMutate = state.currentUser && (state.currentUser.role === 'DISPATCHER' || state.currentUser.role === 'ADMIN');
+  if (!canMutate) {
+    showToast('Permission Denied', 'Modifying ticket status requires Dispatcher or Admin role', 'warning');
+    return;
+  }
+
   const ticket = (state.tickets || []).find(t => t.ticket_id === ticketId);
   if (!ticket || ticket.status === targetStatus) return;
 
@@ -1926,33 +2435,29 @@ async function moveTicketToStatus(ticketId, targetStatus) {
 
   // Optimistic UI update on tickets page
   if (state.route === 'tickets') {
-    document.getElementById('content').innerHTML = pageTickets();
+    const wrap = document.getElementById('kanbanBoardWrap');
+    if (wrap) wrap.innerHTML = renderKanbanColumnsHTML();
   }
 
   try {
-    const resp = await fetch(`/api/v1/tickets/${ticketId}/status?new_status=${targetStatus}`, {
+    const resp = await authFetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/status?new_status=${encodeURIComponent(targetStatus)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' }
     });
     if (!resp.ok) {
-      const fallback = await fetch(`/tickets/${ticketId}/status?new_status=${targetStatus}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      if (!fallback.ok) throw new Error('Status transition rejected by server');
-      const data = await fallback.json();
-      if (data && data.ticket) Object.assign(ticket, data.ticket);
-    } else {
-      const data = await resp.json();
-      if (data && data.ticket) Object.assign(ticket, data.ticket);
+      throw new Error(`Server returned HTTP ${resp.status}`);
     }
+    const data = await resp.json();
+    if (data && data.ticket) Object.assign(ticket, data.ticket);
+    showToast('Ticket Updated', `Ticket ${ticketId} transitioned to ${targetStatus}`, 'success');
   } catch (err) {
     console.error('Failed to update ticket status:', err);
     ticket.status = prevStatus;
     if (state.route === 'tickets') {
-      document.getElementById('content').innerHTML = pageTickets();
+      const wrap = document.getElementById('kanbanBoardWrap');
+      if (wrap) wrap.innerHTML = renderKanbanColumnsHTML();
     }
-    alert(`Could not update ticket status: ${err.message || 'Server error'}`);
+    showToast('Update Failed', `Could not update ticket status: ${err.message || 'Server error'}`, 'error');
   }
 }
 
@@ -2008,15 +2513,23 @@ function pageReports() {
 
 function handleGlobalSearch(term) {
   state.searchTerm = (term || '').trim().toLowerCase();
+  if (state.route === 'tickets') {
+    updateTicketFilter('search', state.searchTerm);
+    return;
+  }
+  if (state.route === 'incidents') {
+    applyIncidentFilters();
+    return;
+  }
   if (!state.searchTerm) return;
-  // If user searched for an incident or ticket ID, auto open drawer if matched
-  const inc = state.incidents.find(i => i.incident_id.toLowerCase().includes(state.searchTerm));
-  if (inc && state.searchTerm.length > 5) {
+  // If user searched for an exact incident or ticket ID, auto open drawer if matched
+  const inc = state.incidents.find(i => i.incident_id.toLowerCase() === state.searchTerm);
+  if (inc) {
     openIncidentDrawer(inc.incident_id);
     return;
   }
-  const tkt = state.tickets.find(t => t.ticket_id.toLowerCase().includes(state.searchTerm));
-  if (tkt && state.searchTerm.length > 5) {
+  const tkt = state.tickets.find(t => t.ticket_id.toLowerCase() === state.searchTerm);
+  if (tkt) {
     openTicketDrawer(tkt.ticket_id);
     return;
   }
@@ -2070,7 +2583,6 @@ function connectWebSocket() {
     ws.onopen = () => {
       state.connected = true;
       updateDsIndicator(true);
-      // Keep alive ping
       setInterval(() => {
         if (ws && ws.readyState === WebSocket.OPEN) ws.send('ping');
       }, 25000);
@@ -2080,9 +2592,7 @@ function connectWebSocket() {
       try {
         const msg = JSON.parse(event.data);
         handleWsMessage(msg);
-      } catch (err) {
-        // Ping response or string text
-      }
+      } catch (err) {}
     };
 
     ws.onclose = () => {
@@ -2145,6 +2655,9 @@ function handleWsMessage(msg) {
         else state.incidents[idx] = msg.data;
         updateMapMarkers();
         renderNav();
+        if ((msg.data.severity || '').toUpperCase() === 'HIGH') {
+          showToast('High Severity Defect', `${msg.data.incident_id} detected on ${msg.data.locality || 'Pune corridor'}`, 'warning');
+        }
         if (state.route === 'dashboard') {
           updateDashboardKpis();
           updateDashboardRecentTable();
@@ -2160,6 +2673,9 @@ function handleWsMessage(msg) {
         if (idx !== -1) state.incidents[idx] = msg.data;
         else state.incidents.unshift(msg.data);
         updateMapMarkers();
+        if (msg.data.status === 'VERIFIED') {
+          showToast('Corroboration Verified', `Multi-bus fusion verified ${msg.data.incident_id}`, 'success');
+        }
         if (state.route === 'dashboard') {
           updateDashboardKpis();
           updateDashboardRecentTable();
@@ -2178,8 +2694,10 @@ function handleWsMessage(msg) {
         if (idx === -1) state.tickets.unshift(msg.data);
         else state.tickets[idx] = msg.data;
         renderNav();
+        showToast('Ticket Generated', `Civic dispatch ${msg.data.ticket_id} created`, 'info');
         if (state.route === 'tickets') {
-          document.getElementById('content').innerHTML = pageTickets();
+          const wrap = document.getElementById('kanbanBoardWrap');
+          if (wrap) wrap.innerHTML = renderKanbanColumnsHTML();
         } else if (state.route === 'dashboard') {
           updateDashboardKpis();
         }
@@ -2190,10 +2708,18 @@ function handleWsMessage(msg) {
       if (msg.data) {
         const idx = state.tickets.findIndex(t => t.ticket_id === msg.data.ticket_id);
         if (idx !== -1) state.tickets[idx] = msg.data;
+        if (msg.data.status === 'RESOLVED') {
+          showToast('Defect Verified Resolved', `Workorder ${msg.data.ticket_id} lifecycle complete`, 'success');
+        }
         if (state.route === 'tickets') {
-          document.getElementById('content').innerHTML = pageTickets();
+          const wrap = document.getElementById('kanbanBoardWrap');
+          if (wrap) wrap.innerHTML = renderKanbanColumnsHTML();
         } else if (state.route === 'dashboard') {
           updateDashboardKpis();
+        }
+        // If ticket drawer is currently open for this ticket, re-render drawer in place
+        if (state.selectedTicketId === msg.data.ticket_id && document.getElementById('drawer') && document.getElementById('drawer').classList.contains('open')) {
+          openTicketDrawer(msg.data.ticket_id);
         }
       }
       break;
@@ -2212,17 +2738,21 @@ function handleWsMessage(msg) {
 // Initial REST fetch sync
 async function syncInitialData() {
   try {
+    // 1. Load authentic Pune transit corridor GeoJSON from backend
+    await loadCorridorsFromGeoJSON();
+
+    // 2. Fetch initial platform dataset
     const [fleetRes, incRes, tktRes, statsRes] = await Promise.all([
-      fetch('/api/v1/fleet').then(r => r.json()).catch(() => ({ fleet: [] })),
-      fetch('/api/v1/incidents').then(r => r.json()).catch(() => ({ incidents: [] })),
-      fetch('/api/v1/tickets').then(r => r.json()).catch(() => ({ tickets: [] })),
-      fetch('/api/v1/stats').then(r => r.json()).catch(() => ({}))
+      authFetch('/api/v1/fleet').then(r => r.json()).catch(() => ({ fleet: [] })),
+      authFetch('/api/v1/incidents').then(r => r.json()).catch(() => ({ incidents: [] })),
+      authFetch('/api/v1/tickets').then(r => r.json()).catch(() => ({ tickets: [] })),
+      authFetch('/api/v1/stats').then(r => r.json()).catch(() => ({}))
     ]);
 
-    if (fleetRes.fleet) state.buses = fleetRes.fleet;
-    if (incRes.incidents) state.incidents = incRes.incidents;
-    if (tktRes.tickets) state.tickets = tktRes.tickets;
-    if (statsRes.total_incidents !== undefined) state.stats = statsRes;
+    if (fleetRes && fleetRes.fleet) state.buses = fleetRes.fleet;
+    if (incRes && incRes.incidents) state.incidents = incRes.incidents;
+    if (tktRes && tktRes.tickets) state.tickets = tktRes.tickets;
+    if (statsRes && statsRes.total_incidents !== undefined) state.stats = statsRes;
 
     renderNav();
     if (state.route === 'dashboard') {
@@ -2237,23 +2767,29 @@ async function syncInitialData() {
   }
 }
 
+// Register service worker if available (PWA offline readiness)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
 // Boot application
 render();
 syncInitialData();
 connectWebSocket();
 
-// Periodic fallback polling every 5 seconds to ensure absolute real-time parity without interrupting user map view
+// Periodic fallback polling every 5 seconds to guarantee state parity
 setInterval(async () => {
   try {
     const [fleetRes, incRes, tktRes] = await Promise.all([
-      fetch('/api/v1/fleet').then(r => r.json()).catch(() => null),
-      fetch('/api/v1/incidents').then(r => r.json()).catch(() => null),
-      fetch('/api/v1/tickets').then(r => r.json()).catch(() => null)
+      authFetch('/api/v1/fleet').then(r => r.json()).catch(() => null),
+      authFetch('/api/v1/incidents').then(r => r.json()).catch(() => null),
+      authFetch('/api/v1/tickets').then(r => r.json()).catch(() => null)
     ]);
     if (fleetRes && fleetRes.fleet) {
       state.buses = fleetRes.fleet;
       updateMapMarkers();
       if (state.route === 'dashboard') updateDashboardKpis();
+      else if (state.route === 'buses') renderPage();
     }
     if (incRes && incRes.incidents) {
       state.incidents = incRes.incidents;
@@ -2261,12 +2797,20 @@ setInterval(async () => {
       if (state.route === 'dashboard') {
         updateDashboardKpis();
         updateDashboardRecentTable();
+      } else if (state.route === 'incidents') {
+        applyIncidentFilters();
       }
     }
     if (tktRes && tktRes.tickets) {
       state.tickets = tktRes.tickets;
-      if (state.route === 'dashboard') updateDashboardKpis();
+      if (state.route === 'dashboard') {
+        updateDashboardKpis();
+      } else if (state.route === 'tickets' && draggedTicketId === null) {
+        const wrap = document.getElementById('kanbanBoardWrap');
+        if (wrap) wrap.innerHTML = renderKanbanColumnsHTML();
+      }
     }
+    renderNav();
   } catch (e) {}
 }, 5000);
 </script>

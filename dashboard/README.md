@@ -10,33 +10,36 @@ Owned by **Member 5 (GIS Dashboard)** per `docs/team-tasks/member-5-gis-dashboar
 
 1. **Strict Road Alignment & Map Matching**:
    - **Guaranteed Road-Centered Locations**: Sensed defect pins and bus locations are anchored strictly over the Pune road corridor polylines (`EPSG:4326 / WGS84`).
-   - **Algorithmic Snapping (`snapToRoadCorridor`)**: Computes the nearest road corridor segment and snaps coordinates precisely to the road centerline.
-   - **GNSS Satellite Drift Vectors**: When raw satellite GNSS coordinates differ from the snapped road location (e.g. 8.4m satellite drift), a dashed vector line connects the raw satellite fix to the road marker, visually proving edge-to-road alignment and map matching.
-   - **Pune Transit Corridors**: Polyline representation of FC Road (`ROUTE-PUNE-FC`), JM Road (`ROUTE-PUNE-JM`), Karve Road (`ROUTE-PUNE-KARVE`), and Shivaji Central (`ROUTE-PUNE-SHIVAJI`) with interactive waypoint tooltips.
+   - **Algorithmic Snapping (`snapToRoad`)**: Computes the nearest road corridor segment and snaps coordinates precisely to the road centerline.
+   - **GNSS Satellite Drift Vectors**: When raw satellite GNSS coordinates differ from the snapped road location by $> 4.5\text{m}$, a red dashed vector line (`#E11D48`, `dashArray: '4, 4'`) connects the raw satellite fix to the road marker with live distance tooltip, visually proving edge-to-road alignment and map matching.
+   - **Dynamic Pune Transit Corridors**: Loads RFC 7946 GeoJSON from `/api/v1/routes/geojson` for FC Road (`ROUTE-PUNE-FC`), JM Road (`ROUTE-PUNE-JM`), Karve Road (`ROUTE-PUNE-KARVE`), and Shivaji Central (`ROUTE-PUNE-SHIVAJI`) with fallback to embedded coordinates.
 
 2. **Real-Time Bi-Directional Streaming (WebSockets + Polling Fallback)**:
    - **WebSocket Endpoint (`/ws` and `/api/v1/ws`)**: Connected clients receive instant push notifications (<50ms latency) on:
      - `EVENT_INGESTED`: New event from Actual Bus Simulator or Demo Simulator.
      - `INCIDENT_CREATED` / `INCIDENT_UPDATED`: Spatial-temporal fleet fusion updates.
-     - `TICKET_CREATED` / `TICKET_STATUS_UPDATED`: Civic lifecycle updates.
+     - `TICKET_CREATED` / `TICKET_STATUS_UPDATED`: Civic lifecycle updates with live drawer re-render.
      - `FLEET_UPDATED`: Real-time bus coordinates, heading, and telemetry.
      - `STATS_UPDATED`: KPI counts.
-   - **Resilient Polling**: 3-second background polling fallback ensures 100% data consistency even across restrictive network proxies.
+   - **Resilient Polling**: 5-second background polling fallback ensures 100% data consistency even across restrictive network proxies without resetting open map markers or user state.
 
 3. **In-Dashboard Interactive Simulation Triggers**:
    - 1-click execution of key vertical slice demonstration scenarios directly from the dashboard:
-     - `▶ Dual-Bus Corroboration (FC Road)`: Simulates BUS-001 and BUS-002 corroborating a pothole at Goodluck Chowk, fusing into `INC-000001`, and generating `POT-2026-000001`.
-     - `▶ Offline WAL Replay (Nal Stop Tunnel)`: Simulates offline event buffering in SQLite/WAL and idempotent replay upon reconnection.
-     - `▶ Post-Repair Resolution`: Simulates smooth asphalt detection and advances the civic ticket to `RESOLVED`.
-     - `⚡ Reset & Seed Pune Corridors`: Re-seeds the baseline authentic Pune dataset.
+     - `▶ 2-Bus Corroboration (FC Road)`: Simulates BUS-001 and BUS-002 corroborating a pothole at Goodluck Chowk, fusing into `INC-000001`, and generating `POT-2026-000001`.
+     - `▶ Offline Burst Replay (JM Road)`: Simulates offline event buffering in SQLite/WAL and idempotent replay upon reconnection.
+     - `▶ Repair Verification`: Simulates smooth asphalt detection and advances the civic ticket to `RESOLVED` with Before/After audit HUD.
+     - `⚡ Reset / Seed`: Re-seeds the baseline authentic Pune dataset.
 
-4. **Civic Ticket Lifecycle Stepper & Actions**:
+4. **Security, Sanitization & Role-Based Access Control (RBAC)**:
+   - **Strict Entity Sanitization**: Custom `escapeHtml()` utility wraps all dynamic string interpolations to protect against XSS injections.
+   - **Operator Role Switcher**: Topbar role toggle between `DISPATCHER` (read/write ticket management) and `VIEWER` (read-only audit mode).
+   - **Pydantic v2 Contract Adherence**: `raiseTicketForIncident()` dispatches compliant `created_at` and `updated_at` ISO 8601 timestamps, preventing 422 Unprocessable Entity errors.
+   - **Toast Notifications**: Interactive alert feedback for high-severity defect detections, multi-bus fleet corroborations, and ticket stage advances.
+
+5. **Civic Ticket Lifecycle Stepper & Dual-Pane Resolution HUD**:
    - Complete 4-stage lifecycle: `REPORTED` → `ACKNOWLEDGED` → `IN_PROGRESS` → `RESOLVED`.
-   - Advancing status directly executes `PATCH /api/v1/tickets/{id}/status?new_status=...` against the backend, broadcasting updates to all connected dashboards in real time.
-   - Before/after visual evidence verification inspection.
-
-5. **Edge AI Defect Evidence & Bounding Boxes**:
-   - Actual defect evidence photos served from `/runtime/evidence/...` with YOLOv8 detection tags and ByteTrack corroboration.
+   - Composable Kanban filters: Search query, Defect Type, Priority, and SLA urgency.
+   - Before/After dual-pane image viewer for resolved defect audit and verification.
    - Direct Google Maps navigation link (`https://www.google.com/maps/dir/?api=1&destination=lat,lng`).
 
 ---
@@ -63,12 +66,12 @@ http://localhost:8000/dashboard
 
 ## How to Test
 
-Run the automated dashboard integration test suite:
+Run the automated dashboard integration and hardening test suites:
 ```bash
-./.venv/bin/pytest tests/test_dashboard_integration.py -v
+./.venv/bin/pytest tests/test_dashboard_integration.py tests/test_dashboard_hardening.py -v
 ```
 
-All 12 tests verify:
+All 23 combined tests verify:
 - HTML file structure and Leaflet GIS integration.
 - FastAPI delivery of `GET /dashboard`.
 - Contract adherence of GeoJSON layers (`/incidents/geojson`, `/routes/geojson`).
@@ -78,3 +81,8 @@ All 12 tests verify:
 - Simulator interactive trigger execution.
 - Static evidence photo serving.
 - Authentic Pune road corridor snapping and coordinate validation.
+- XSS escaping and DOM interpolation safety.
+- Pydantic v2 ticket payload compliance (`created_at`, `updated_at`).
+- GNSS satellite drift vector threshold rendering (>4.5m).
+- Role-based UI permission gating (Dispatcher vs Viewer).
+- Before/After resolution verification dual HUD.
