@@ -202,4 +202,3 @@ class TestDashboardHardening(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, f"Node syntax check failed: {proc.stderr}")
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
-

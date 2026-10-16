@@ -328,6 +328,3 @@ class TestDashboardIntegration(unittest.TestCase):
         self.assertIn("cells", h_data)
         self.assertIn("total_incidents", h_data)
         self.assertIn("cell_count", h_data)
-
-
-

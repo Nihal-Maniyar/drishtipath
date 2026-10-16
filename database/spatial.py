@@ -343,4 +343,3 @@ def aggregate_spatial_density_grid(
                 for inc in inc_list
                 if not severity or inc.severity == severity
             ]
-

@@ -1,11 +1,11 @@
 # Developer 1 to Developer 2 Handoff & Frontend Hardening Specification
 
-**Branch**: `feature/dashboard-hardening`  
-**Tracking Remote**: `origin/feature/dashboard-hardening`  
-**Base Commit**: `0034616` (`origin/develop`)  
-**Target Integration Branch**: `develop`  
-**Author**: Developer 1 (Frontend, Dashboard & GIS)  
-**Counterpart**: Developer 2 (Backend, PostGIS & Intelligence)  
+**Branch**: `feature/dashboard-hardening`
+**Tracking Remote**: `origin/feature/dashboard-hardening`
+**Base Commit**: `0034616` (`origin/develop`)
+**Target Integration Branch**: `develop`
+**Author**: Developer 1 (Frontend, Dashboard & GIS)
+**Counterpart**: Developer 2 (Backend, PostGIS & Intelligence)
 
 ---
 

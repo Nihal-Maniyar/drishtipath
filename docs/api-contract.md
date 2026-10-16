@@ -226,5 +226,3 @@ The spatial density aggregation endpoint `GET /api/v1/analytics/heatmap` aggrega
 - Malformed payloads or invalid contract values return `422 Unprocessable Entity`.
 - Subscribers process MQTT QoS 1 duplicate deliveries idempotently using stable `advisory_id` keys.
 - Older event observations (historical replay) do not overwrite newer ticket resolution state.
-
-

@@ -1221,8 +1221,3 @@ def test_spatial_density_grid_helper() -> None:
         session.close()
         Base.metadata.drop_all(engine)
         engine.dispose()
-
-
-
-
-
