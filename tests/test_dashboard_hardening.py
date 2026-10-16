@@ -135,3 +135,29 @@ class TestDashboardHardening(unittest.TestCase):
         self.assertIn("RESOLUTION_CANDIDATE", self.html)
         self.assertIn("RESOLVED", self.html)
         self.assertIn("REJECTED", self.html)
+
+    def test_inline_javascript_syntax_valid(self) -> None:
+        """Verify inline dashboard JavaScript is syntactically valid via node or balance check."""
+        import re
+        import shutil
+        import subprocess
+
+        m = re.search(r"<script>(.*?)</script>", self.html, re.DOTALL)
+        self.assertIsNotNone(m, "Inline script must be present in dashboard/index.html")
+        script_code = m.group(1)
+
+        self.assertEqual(script_code.count("{"), script_code.count("}"), "Braces must balance")
+        self.assertEqual(script_code.count("("), script_code.count(")"), "Parentheses must balance")
+
+        node_bin = shutil.which("node")
+        if node_bin:
+            import tempfile
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as tmp:
+                tmp.write(script_code)
+                tmp_path = tmp.name
+            try:
+                proc = subprocess.run([node_bin, "--check", tmp_path], capture_output=True, text=True)
+                self.assertEqual(proc.returncode, 0, f"Node syntax check failed: {proc.stderr}")
+            finally:
+                Path(tmp_path).unlink(missing_ok=True)
+
