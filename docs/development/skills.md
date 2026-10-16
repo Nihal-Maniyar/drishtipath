@@ -9,10 +9,12 @@ This document catalogs the verified development skills installed in the reposito
 | Skill Name | Version / Baseline | Upstream Source URL | Workspace Installation Location | Primary Role & Domain |
 |---|---|---|---|---|
 | **`frontend-design`** | `main` (rev `2024.09`) | [Anthropic Skills: frontend-design](https://github.com/anthropics/skills/tree/main/skills/frontend-design) | `.agents/skills/frontend-design/SKILL.md` (and legacy `frontend-design/SKILL.md`) | Visual identity, typography, telemetry badges, and anti-template UI design. |
+| **`better-interface`** | `main` | [Jakub Krehel Skills](https://github.com/jakubkrehel/skills) | `.agents/skills/better-interface/SKILL.md` | Cross-discipline UI review across accessibility, layout, writing, typography, colors, and polish. |
+| **`better-ui`** | `main` | [Jakub Krehel Skills](https://github.com/jakubkrehel/skills) | `.agents/skills/better-ui/SKILL.md` | Surface depth, concentric border radii, optical alignment, shadows, icon states, and motion timing. |
 | **`backend-intelligence`** | `v1.0.0` (FastAPI 0.115) | [FastAPI Security](https://fastapi.tiangolo.com/tutorial/security/) & [Jakub Krehel Skills](https://github.com/jakubkrehel/skills) | `.agents/skills/backend-intelligence/SKILL.md` | Pydantic v2 contracts (`extra="forbid"`), JWT/API key security, WebSocket hub, idempotent outbox. |
-| **`gis-leaflet`** | `Leaflet 1.9.4` | [Leaflet Reference Docs](https://leafletjs.com/reference.html) | `.agents/skills/gis-leaflet/SKILL.md` | Transit corridor snapping, WGS84 projections, rotating DivIcons, and GNSS satellite drift vectors. |
 | **`database-postgis`** | `PostGIS 3.4` | [PostGIS Official Documentation](https://postgis.net/documentation/) | `.agents/skills/database-postgis/SKILL.md` | Spatial geometry indexing (`GIST`), `ST_DWithin` spatial clustering, and safe Alembic migrations. |
 | **`testing-pytest`** | `pytest 8.x` | [Pytest Documentation](https://docs.pytest.org/en/stable/) | `.agents/skills/testing-pytest/SKILL.md` | TestClient isolation, deterministic simulation verification, and CI regression testing. |
+| **`gis-leaflet`** | `Leaflet 1.9.4` | [Leaflet Reference Docs](https://leafletjs.com/reference.html) | `.agents/skills/gis-leaflet/SKILL.md` | Transit corridor snapping, WGS84 projections, rotating DivIcons, and GNSS satellite drift vectors. |
 
 ---
 
