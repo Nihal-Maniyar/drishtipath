@@ -32,7 +32,9 @@ try:
     )
     from backend.app.routers.auth import router as auth_router
     from backend.app.routers.advisory import router as advisory_router
+    from backend.app.routers.verification import router as verification_router
     from backend.app.services.advisory_service import advisory_service
+    from backend.app.services.verification_service import verification_service
 except ImportError:
     from app.core.security import (
         UserAccount,
@@ -42,7 +44,9 @@ except ImportError:
     )
     from app.routers.auth import router as auth_router
     from app.routers.advisory import router as advisory_router
+    from app.routers.verification import router as verification_router
     from app.services.advisory_service import advisory_service
+    from app.services.verification_service import verification_service
 
 # Handle imports whether launched from root or backend directory
 try:
@@ -602,6 +606,7 @@ init_default_buses()
 api_router = APIRouter()
 api_router.include_router(auth_router)
 api_router.include_router(advisory_router)
+api_router.include_router(verification_router)
 
 
 # ---------------------------------------------------------------------------
@@ -984,6 +989,7 @@ async def trigger_simulator_scenario(
                 step["done"] = True
                 if step.get("time") == "Pending":
                     step["time"] = now
+            verification_service.schedule_watch(tkt)
             await ws_manager.broadcast({"type": "TICKET_STATUS_UPDATED", "data": tkt})
 
         inc = incidents_by_id.get("INC-000001")
@@ -1049,6 +1055,40 @@ async def ingest_event(event: Event):
     # Record normalized observation record
     obs = create_observation_from_event(event, incoming["timestamp"])
     observations_by_id[obs["observation_id"]] = obs
+
+    # Closed-loop automated repair verification check
+    updated_watch, affected_ticket = verification_service.process_observation(
+        obs, tickets_by_id
+    )
+    if affected_ticket:
+        if affected_ticket["status"] == "REPORTED":
+            # Failed repair reopened!
+            safe_db_persist(
+                db_transition_ticket_status,
+                ticket_id=affected_ticket["ticket_id"],
+                new_status="REPORTED",
+                changed_by="system_verifier",
+                notes=updated_watch.notes if updated_watch else "FAILED_REPAIR",
+            )
+            await ws_manager.broadcast({
+                "type": "TICKET_REOPENED",
+                "data": affected_ticket,
+                "watch": updated_watch.model_dump() if updated_watch else None,
+            })
+        elif affected_ticket.get("verification_status") == "VERIFIED_RESOLVED":
+            # Successfully verified repair
+            safe_db_persist(
+                db_transition_ticket_status,
+                ticket_id=affected_ticket["ticket_id"],
+                new_status="RESOLVED",
+                changed_by="system_verifier",
+                notes=updated_watch.notes if updated_watch else "VERIFIED_RESOLVED",
+            )
+            await ws_manager.broadcast({
+                "type": "TICKET_VERIFIED",
+                "data": affected_ticket,
+                "watch": updated_watch.model_dump() if updated_watch else None,
+            })
 
     # Database persistence (idempotent event + observation)
     safe_db_persist(insert_event_idempotent, incoming)
@@ -1414,6 +1454,10 @@ async def update_ticket_status(
         new_status=new_status,
         changed_by=current_user.username,
     )
+
+    # Schedule automated repair verification watch
+    if new_status == "RESOLVED":
+        verification_service.schedule_watch(ticket)
 
     await ws_manager.broadcast({
         "type": "TICKET_STATUS_UPDATED",

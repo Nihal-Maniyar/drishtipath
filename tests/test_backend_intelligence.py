@@ -578,3 +578,242 @@ def test_advisory_subscriber_idempotency_and_stale_filtering() -> None:
     res_route = subscriber.process_message_payload(diff_route)
     assert res_route is None
 
+
+# ---------------------------------------------------------------------------
+# Phase C: Closed-Loop Automated Repair Verification Tests
+# ---------------------------------------------------------------------------
+
+def test_verification_watch_scheduling_on_resolved_ticket(client: TestClient) -> None:
+    """Verify that transitioning a ticket to RESOLVED automatically schedules a verification watch."""
+    from backend.app.main import tickets_by_id
+    from backend.app.services.verification_service import verification_service
+
+    verification_service.reset_for_tests()
+
+    # Create a test ticket
+    t_id = "POT-2026-990001"
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    tickets_by_id[t_id] = {
+        "ticket_id": t_id,
+        "incident_id": "INC-000001",
+        "event_type": "POTHOLE",
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "status": "IN_PROGRESS",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "timeline": [
+            {"label": "Reported", "done": True, "time": now_iso},
+            {"label": "Acknowledged", "done": True, "time": now_iso},
+            {"label": "In Progress", "done": True, "time": now_iso},
+            {"label": "Resolved", "done": False, "time": "Pending"},
+        ],
+    }
+
+    # Transition ticket to RESOLVED with DISPATCHER credentials
+    token = create_access_token({"sub": "dispatcher", "role": "DISPATCHER"})
+    patch_resp = client.patch(
+        f"/api/v1/tickets/{t_id}/status?new_status=RESOLVED",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["ticket"]["status"] == "RESOLVED"
+
+    # Verify that a verification watch was scheduled and can be queried
+    v_resp = client.get(f"/api/v1/tickets/{t_id}/verification")
+    assert v_resp.status_code == 200
+    watch_data = v_resp.json()
+    assert watch_data["ticket_id"] == t_id
+    assert watch_data["state"] == "WATCHING"
+    assert watch_data["required_smooth_observations"] == 2
+    assert watch_data["smooth_observations_count"] == 0
+
+
+def test_smooth_surface_corroboration_advances_to_verified_resolved(client: TestClient) -> None:
+    """Verify that independent smooth surface observations advance the ticket to VERIFIED_RESOLVED."""
+    from backend.app.main import tickets_by_id
+    from backend.app.services.verification_service import verification_service
+
+    verification_service.reset_for_tests()
+
+    t_id = "POT-2026-990002"
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    tkt = {
+        "ticket_id": t_id,
+        "incident_id": "INC-000002",
+        "event_type": "POTHOLE",
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "status": "RESOLVED",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "timeline": [
+            {"label": "Reported", "done": True, "time": now_iso},
+            {"label": "Resolved", "done": True, "time": now_iso},
+        ],
+    }
+    tickets_by_id[t_id] = tkt
+    verification_service.schedule_watch(tkt)
+
+    # 1. First smooth observation by BUS-002 (simulated via POST endpoint)
+    token = create_access_token({"sub": "admin", "role": "ADMIN"})
+    res1 = client.post(
+        f"/api/v1/tickets/{t_id}/verify-smooth",
+        json={"bus_id": "BUS-002", "confidence": 0.88},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res1.status_code == 200
+    w1 = res1.json()
+    assert w1["state"] == "WATCHING"
+    assert w1["smooth_observations_count"] == 1
+    assert "BUS-002" in w1["smooth_buses"]
+
+    # 2. Second independent smooth observation by BUS-003 -> Must reach threshold and advance to VERIFIED_RESOLVED
+    res2 = client.post(
+        f"/api/v1/tickets/{t_id}/verify-smooth",
+        json={"bus_id": "BUS-003", "confidence": 0.90},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res2.status_code == 200
+    w2 = res2.json()
+    assert w2["state"] == "VERIFIED_RESOLVED"
+    assert w2["smooth_observations_count"] == 2
+    assert "BUS-003" in w2["smooth_buses"]
+
+    # Check updated ticket state
+    assert tickets_by_id[t_id]["verification_status"] == "VERIFIED_RESOLVED"
+    assert any(step["label"] == "Verified Resolved" for step in tickets_by_id[t_id]["timeline"])
+
+
+def test_persistent_defect_reopens_ticket_with_failed_repair() -> None:
+    """Verify that subsequent defect observation within 25m marks FAILED_REPAIR and reopens ticket to REPORTED."""
+    from backend.app.main import tickets_by_id
+    from backend.app.services.verification_service import verification_service
+
+    verification_service.reset_for_tests()
+
+    t_id = "POT-2026-990003"
+    t_dt = datetime.now(timezone.utc)
+    t_iso = t_dt.isoformat().replace("+00:00", "Z")
+    tkt = {
+        "ticket_id": t_id,
+        "incident_id": "INC-000003",
+        "event_type": "POTHOLE",
+        "latitude": 18.519600,
+        "longitude": 73.843600,
+        "status": "RESOLVED",
+        "created_at": t_iso,
+        "updated_at": t_iso,
+        "timeline": [
+            {"label": "Reported", "done": True, "time": t_iso},
+            {"label": "Resolved", "done": True, "time": t_iso},
+        ],
+    }
+    tickets_by_id[t_id] = tkt
+    watch = verification_service.schedule_watch(tkt)
+
+    # Observation occurs AFTER resolution at the same spot (10 meters away)
+    obs_time = (t_dt + timedelta(minutes=15)).isoformat().replace("+00:00", "Z")
+    defect_obs = {
+        "observation_id": "OBS-DEFECT-001",
+        "event_id": "EVT-DEFECT-001",
+        "bus_id": "BUS-004",
+        "event_type": "POTHOLE",
+        "timestamp": obs_time,
+        "latitude": 18.519650,  # ~6m distance
+        "longitude": 73.843600,
+        "confidence": 0.94,
+    }
+
+    updated_watch, affected_ticket = verification_service.process_observation(defect_obs, tickets_by_id)
+
+    assert updated_watch is not None
+    assert updated_watch.state == "FAILED_REPAIR"
+    assert affected_ticket is not None
+    # Ticket must be reopened to REPORTED!
+    assert affected_ticket["status"] == "REPORTED"
+    assert affected_ticket["verification_status"] == "FAILED_REPAIR"
+    assert any("Failed Repair Reopened" in step.get("label", "") for step in affected_ticket["timeline"])
+
+
+def test_temporal_guard_older_events_cannot_overwrite_newer_state() -> None:
+    """Verify that replaying older historical events cannot overwrite a newer resolved ticket state."""
+    from backend.app.main import tickets_by_id
+    from backend.app.services.verification_service import verification_service
+
+    verification_service.reset_for_tests()
+
+    t_id = "POT-2026-990004"
+    t_dt = datetime.now(timezone.utc)
+    t_iso = t_dt.isoformat().replace("+00:00", "Z")
+
+    tkt = {
+        "ticket_id": t_id,
+        "incident_id": "INC-000004",
+        "event_type": "POTHOLE",
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "status": "RESOLVED",
+        "created_at": t_iso,
+        "updated_at": t_iso,
+        "timeline": [{"label": "Resolved", "done": True, "time": t_iso}],
+    }
+    tickets_by_id[t_id] = tkt
+    watch = verification_service.schedule_watch(tkt)
+
+    # Historical event replayed from BEFORE the ticket was resolved
+    old_time = (t_dt - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    stale_obs = {
+        "observation_id": "OBS-STALE-REPLAY-001",
+        "event_id": "EVT-STALE-REPLAY-001",
+        "bus_id": "BUS-005",
+        "event_type": "POTHOLE",
+        "timestamp": old_time,
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "confidence": 0.95,
+    }
+
+    # Processing stale observation must be ignored
+    updated_watch, affected_ticket = verification_service.process_observation(stale_obs, tickets_by_id)
+    assert updated_watch is None
+    assert affected_ticket is None
+
+    # Ticket remains in RESOLVED / WATCHING state
+    assert tickets_by_id[t_id]["status"] == "RESOLVED"
+    assert watch.state == "WATCHING"
+
+
+def test_expired_watch_transitions_to_expired_unverified() -> None:
+    """Verify that a watch where no bus passes during the 48-hour window transitions to EXPIRED_UNVERIFIED."""
+    from backend.app.main import tickets_by_id
+    from backend.app.services.verification_service import verification_service
+
+    verification_service.reset_for_tests()
+
+    t_id = "POT-2026-990005"
+    now = datetime.now(timezone.utc)
+    t_iso = now.isoformat().replace("+00:00", "Z")
+
+    tkt = {
+        "ticket_id": t_id,
+        "incident_id": "INC-000005",
+        "event_type": "POTHOLE",
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "status": "RESOLVED",
+        "created_at": t_iso,
+        "updated_at": t_iso,
+    }
+    tickets_by_id[t_id] = tkt
+    watch = verification_service.schedule_watch(tkt, window_hours=48)
+
+    # Simulate evaluation 49 hours later
+    simulated_future = now + timedelta(hours=49)
+    expired = verification_service.evaluate_expired_watches(tickets_by_id, current_time=simulated_future)
+
+    assert any(w.watch_id == watch.watch_id for w in expired)
+    assert watch.state == "EXPIRED_UNVERIFIED"
+    assert tickets_by_id[t_id]["verification_status"] == "EXPIRED_UNVERIFIED"
+
+

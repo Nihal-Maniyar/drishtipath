@@ -132,6 +132,10 @@ The backend exposes these v1 endpoints (available at root and `/api/v1` prefix):
 | `GET` | `/advisories/{advisory_id}` | None | `200 OK` | Retrieve single advisory (`404` if not found) |
 | `GET` | `/advisories/bus/{bus_id}` | None | `200 OK` | Retrieve active hazard advisories applicable to specific bus |
 | `POST` | `/advisories/evaluate` | `AdvisoryEvaluationRequest` | `201 Created` | Evaluate incident and issue downstream hazard advisory |
+| `GET` | `/verification/watches` | None | `200 OK` | List all scheduled and historical repair verification watches |
+| `GET` | `/tickets/{ticket_id}/verification` | None | `200 OK` | Retrieve verification watch state for a specific ticket |
+| `POST` | `/verification/evaluate-expired` | None | `200 OK` | Evaluate and transition lapsed verification watches |
+| `POST` | `/tickets/{ticket_id}/verify-smooth` | `SmoothObservationSimulateRequest` | `200 OK` | Simulate smooth road pass over repaired ticket |
 
 ## Hazard Advisory — downstream bus warning
 
@@ -157,9 +161,36 @@ When a severe defect (e.g. high-severity pothole) qualifies, an advisory is publ
 }
 ```
 
+## Repair Verification Watch — closed-loop ticket verification
+
+When a civic ticket transitions to `RESOLVED`, an automated verification watch is scheduled (window: 48 hours, spatial threshold: 25 meters). Subsequent independent bus observations evaluate repair efficacy:
+- **`VERIFIED_RESOLVED`**: Corroborated smooth surface observations (2 independent bus passes or 1 high-confidence pass >= 0.95).
+- **`FAILED_REPAIR`**: Persistent defect signatures reopen the ticket back to `REPORTED` with complete audit tracking.
+- **`EXPIRED_UNVERIFIED`**: Window lapses without bus passage, flagging the ticket for authority manual inspection.
+Format: `VW-YYYY-XXXXXX`.
+
+```json
+{
+  "watch_id": "VW-2026-000001",
+  "ticket_id": "POT-2026-000001",
+  "scheduled_at": "2026-09-22T08:35:00Z",
+  "expires_at": "2026-09-24T08:35:00Z",
+  "state": "WATCHING",
+  "latitude": 18.5196,
+  "longitude": 73.8436,
+  "required_smooth_observations": 2,
+  "smooth_observations_count": 1,
+  "defect_observations_count": 0,
+  "smooth_buses": ["BUS-002"],
+  "defect_buses": []
+}
+```
+
 ### Idempotency & Conflict Rules
 - Re-submitting an existing `event_id`, `incident_id`, or `ticket_id` with an identical payload returns `201 Created` with `"duplicate": true`.
 - Submitting an existing ID with a modified or conflicting payload returns `409 Conflict`.
 - Malformed payloads or invalid contract values return `422 Unprocessable Entity`.
 - Subscribers process MQTT QoS 1 duplicate deliveries idempotently using stable `advisory_id` keys.
+- Older event observations (historical replay) do not overwrite newer ticket resolution state.
+
 
