@@ -1192,6 +1192,9 @@ async function loadCorridorsFromGeoJSON() {
         }
       });
       state.corridorsLoadedFromGeoJSON = true;
+      if (typeof renderCorridorPolylines === 'function' && leafletMap) {
+        renderCorridorPolylines();
+      }
     }
   } catch (err) {
     console.warn('Could not load routes/geojson, utilizing static corridor coordinates:', err);
@@ -1304,8 +1307,50 @@ let leafletMap = null;
 let tileLayer = null;
 let roadPolyline = null;
 let corridorPolylines = {};
+let corridorCasingLayers = [];
 let busMarkers = {};
 let incidentMarkers = {};
+
+function renderCorridorPolylines() {
+  if (!leafletMap) return;
+
+  if (corridorCasingLayers && corridorCasingLayers.length) {
+    corridorCasingLayers.forEach(l => {
+      try { leafletMap.removeLayer(l); } catch (e) {}
+    });
+    corridorCasingLayers = [];
+  }
+
+  Object.values(corridorPolylines).forEach(p => {
+    try { leafletMap.removeLayer(p); } catch (e) {}
+  });
+  corridorPolylines = {};
+
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+    (!document.documentElement.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+  for (const [routeId, corridor] of Object.entries(PUNE_CORRIDORS_GEO)) {
+    const casing = L.polyline(corridor.coords, {
+      color: isDark ? '#0F4A61' : '#0E1B2C',
+      weight: 8,
+      opacity: 0.55,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(leafletMap);
+    corridorCasingLayers.push(casing);
+
+    const poly = L.polyline(corridor.coords, {
+      color: corridor.color,
+      weight: 4.5,
+      opacity: 0.95,
+      lineCap: 'round',
+      lineJoin: 'round',
+    }).addTo(leafletMap);
+
+    corridorPolylines[routeId] = poly;
+  }
+  roadPolyline = corridorPolylines['ROUTE-PUNE-FC'] || null;
+}
 
 function initLeafletMap() {
   const container = document.getElementById('leafletMap');
@@ -1324,6 +1369,7 @@ function initLeafletMap() {
     busMarkers = {};
     incidentMarkers = {};
     corridorPolylines = {};
+    corridorCasingLayers = [];
   }
 
   // Restore previous center and zoom so user pan/zoom is never disrupted
@@ -1342,9 +1388,6 @@ function initLeafletMap() {
     state.mapZoom = leafletMap.getZoom();
   });
 
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
-    (!document.documentElement.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
-
   const tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   tileLayer = L.tileLayer(tileUrl, {
@@ -1353,28 +1396,7 @@ function initLeafletMap() {
   }).addTo(leafletMap);
 
   // Plot All Pune Road Corridors
-  for (const [routeId, corridor] of Object.entries(PUNE_CORRIDORS_GEO)) {
-    // 1. Casing line for contrast
-    L.polyline(corridor.coords, {
-      color: isDark ? '#0F4A61' : '#0E1B2C',
-      weight: 8,
-      opacity: 0.55,
-      lineCap: 'round',
-      lineJoin: 'round'
-    }).addTo(leafletMap);
-
-    // 2. Active transit corridor centerline
-    const poly = L.polyline(corridor.coords, {
-      color: corridor.color,
-      weight: 4.5,
-      opacity: 0.95,
-      lineCap: 'round',
-      lineJoin: 'round',
-    }).addTo(leafletMap);
-
-    corridorPolylines[routeId] = poly;
-  }
-  roadPolyline = corridorPolylines['ROUTE-PUNE-FC'] || null;
+  renderCorridorPolylines();
 
   // Render markers
   updateMapMarkers();
@@ -1388,6 +1410,7 @@ function initLeafletMap() {
 function updateMapTileTheme(theme) {
   if (!leafletMap || !tileLayer) return;
   tileLayer.setUrl('https://tile.openstreetmap.org/{z}/{x}/{y}.png');
+  renderCorridorPolylines();
 }
 
 function focusCorridor(name) {
@@ -1511,7 +1534,7 @@ function updateMapMarkers() {
     const incIcon = L.divIcon({
       className: 'leaflet-incident-icon-wrap',
       html: `
-        <div class="leaflet-incident-marker ${isSelected ? 'selected' : ''}" style="--pin-color: ${colorHex};" title="${inc.incident_id} - ${type}">
+        <div class="leaflet-incident-marker ${isSelected ? 'selected' : ''}" style="--pin-color: ${colorHex};" title="${escapeHtml(inc.incident_id)} - ${escapeHtml(type)}">
           <div class="pin-ring"></div>
           <div class="pin-head">
             <span class="pin-type-dot"></span>

@@ -89,6 +89,7 @@ class TestDashboardHardening(unittest.TestCase):
     def test_dynamic_geojson_route_loader(self) -> None:
         """Verify dynamic corridor loading from GET /api/v1/routes/geojson."""
         self.assertIn("loadCorridorsFromGeoJSON", self.html)
+        self.assertIn("renderCorridorPolylines", self.html)
         self.assertIn("/api/v1/routes/geojson", self.html)
         self.assertIn("PUNE_CORRIDORS_GEO", self.html)
 
@@ -98,6 +99,16 @@ class TestDashboardHardening(unittest.TestCase):
         fc = res.json()
         self.assertEqual(fc.get("type"), "FeatureCollection")
         self.assertGreaterEqual(len(fc.get("features", [])), 4)
+
+    def test_corridor_focus_controls(self) -> None:
+        """Verify interactive corridor focus buttons and bounds fitting."""
+        self.assertIn("focusCorridor", self.html)
+        self.assertIn("ROUTE-PUNE-FC", self.html)
+        self.assertIn("ROUTE-PUNE-JM", self.html)
+        self.assertIn("ROUTE-PUNE-KARVE", self.html)
+        self.assertIn("ROUTE-PUNE-SHIVAJI", self.html)
+        self.assertIn("focusCorridor('FC')", self.html)
+        self.assertIn("focusCorridor('ALL')", self.html)
 
     def test_role_based_security_ui(self) -> None:
         """Verify dispatcher vs viewer role switching and permission gates."""
