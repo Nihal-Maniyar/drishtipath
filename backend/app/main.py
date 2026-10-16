@@ -20,7 +20,7 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 try:
@@ -35,6 +35,7 @@ try:
     from backend.app.routers.verification import router as verification_router
     from backend.app.services.advisory_service import advisory_service
     from backend.app.services.verification_service import verification_service
+    from backend.app.services.pdf_service import pdf_service
 except ImportError:
     from app.core.security import (
         UserAccount,
@@ -47,6 +48,7 @@ except ImportError:
     from app.routers.verification import router as verification_router
     from app.services.advisory_service import advisory_service
     from app.services.verification_service import verification_service
+    from app.services.pdf_service import pdf_service
 
 # Handle imports whether launched from root or backend directory
 try:
@@ -1490,6 +1492,27 @@ def get_ticket_map(ticket_id: str):
         "longitude": longitude,
         "google_maps_url": google_maps_url,
     }
+
+
+@api_router.get("/tickets/{ticket_id}/workorder.pdf", tags=["Tickets"])
+def get_ticket_workorder_pdf(
+    ticket_id: str,
+    current_user: UserAccount = Depends(require_role(["DISPATCHER", "ADMIN"])),
+):
+    """Generate and return a standardized contractor work-order PDF with map QR code and evidence."""
+    ticket = tickets_by_id.get(ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    pdf_bytes = pdf_service.generate_pdf(ticket)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="workorder_{ticket_id}.pdf"',
+            "Content-Type": "application/pdf",
+        },
+    )
 
 
 # Mount routes at root and with /api/v1 prefix

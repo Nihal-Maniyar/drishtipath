@@ -817,3 +817,111 @@ def test_expired_watch_transitions_to_expired_unverified() -> None:
     assert tickets_by_id[t_id]["verification_status"] == "EXPIRED_UNVERIFIED"
 
 
+# ---------------------------------------------------------------------------
+# Phase D: Contractor Work-Order PDFs Tests
+# ---------------------------------------------------------------------------
+
+def test_workorder_pdf_generation_content_and_headers(client: TestClient) -> None:
+    """Verify that Work-Order PDF generates valid binary format, correct media type, and headers."""
+    from backend.app.main import tickets_by_id
+
+    t_id = "POT-2026-000001"
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    tickets_by_id[t_id] = {
+        "ticket_id": t_id,
+        "incident_id": "INC-000001",
+        "workorder_id": "WO-2026-000001",
+        "event_type": "POTHOLE",
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "status": "IN_PROGRESS",
+        "department": "Road Maintenance Department",
+        "estimated_repair_sla_hours": 48,
+        "google_maps_url": "https://www.google.com/maps/dir/?api=1&destination=18.5196,73.8436",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+
+    # Request with DISPATCHER credentials
+    token = create_access_token({"sub": "dispatcher", "role": "DISPATCHER"})
+    resp = client.get(
+        f"/api/v1/tickets/{t_id}/workorder.pdf",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert f'filename="workorder_{t_id}.pdf"' in resp.headers["content-disposition"]
+    # PDF Magic Bytes (%PDF-)
+    assert resp.content.startswith(b"%PDF-")
+    assert len(resp.content) > 10000
+
+
+def test_workorder_pdf_missing_evidence_fallback(client: TestClient) -> None:
+    """Verify PDF generator handles missing or unresolvable evidence images with styled placeholder."""
+    from backend.app.main import tickets_by_id
+
+    t_id = "POT-2026-MISSING-IMG"
+    tickets_by_id[t_id] = {
+        "ticket_id": t_id,
+        "incident_id": "INC-000002",
+        "event_type": "POTHOLE",
+        "latitude": 18.5196,
+        "longitude": 73.8436,
+        "status": "REPORTED",
+        "evidence_image": "nonexistent/missing_edge_evidence.jpg",
+    }
+
+    token = create_access_token({"sub": "dispatcher", "role": "DISPATCHER"})
+    resp = client.get(
+        f"/api/v1/tickets/{t_id}/workorder.pdf",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"%PDF-")
+
+
+def test_workorder_pdf_qr_validation() -> None:
+    """Verify QR destination validation and QR matrix generation."""
+    from backend.app.services.pdf_service import generate_qr_image, validate_qr_url
+
+    # Valid Google Maps URL
+    valid_url = "https://www.google.com/maps/dir/?api=1&destination=18.519600,73.843600"
+    assert validate_qr_url(valid_url, 18.5196, 73.8436) == valid_url
+
+    # Invalid / untrusted URL -> must fallback to safe coordinate destination
+    bad_url = "http://insecure-site.com/exploit"
+    safe_url = validate_qr_url(bad_url, 18.5196, 73.8436)
+    assert safe_url.startswith("https://www.google.com/maps/dir/?api=1&destination=18.519600,73.843600")
+
+    # Generate QR Image
+    qr_img = generate_qr_image(valid_url, module_size=4, border=2)
+    assert qr_img.width > 100
+    assert qr_img.height > 100
+
+
+def test_workorder_pdf_access_control(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify role gating on PDF work-order generation (no unauthenticated or viewer access)."""
+    # 1. 404 on nonexistent ticket
+    token = create_access_token({"sub": "admin", "role": "ADMIN"})
+    res_404 = client.get(
+        "/api/v1/tickets/NONEXISTENT-999/workorder.pdf",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res_404.status_code == 404
+
+    # 2. 403 on VIEWER role
+    viewer_token = create_access_token({"sub": "viewer", "role": "VIEWER"})
+    res_viewer = client.get(
+        "/api/v1/tickets/POT-2026-000001/workorder.pdf",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+    )
+    assert res_viewer.status_code == 403
+
+    # 3. 401 when unauthenticated and AUTH_ENFORCED is active
+    monkeypatch.setattr(settings, "AUTH_ENFORCED", True)
+    res_unauth = client.get("/api/v1/tickets/POT-2026-000001/workorder.pdf")
+    assert res_unauth.status_code == 401
+
+
+
